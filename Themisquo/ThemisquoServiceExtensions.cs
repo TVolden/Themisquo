@@ -28,5 +28,6 @@ namespace Themisquo
             services.AddScoped<IQueryHandler<TQuery, TResult>, THandler>();
             return services;
         }
+
     }
 }
