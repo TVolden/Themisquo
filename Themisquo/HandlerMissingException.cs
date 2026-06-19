@@ -2,7 +2,6 @@
 
 namespace Themisquo
 {
-    [Serializable]
     public class HandlerMissingException : Exception
     {
         public HandlerMissingException(Type expectedType, Type dataType) : 

@@ -1,9 +1,7 @@
-﻿using System;
-using System.Runtime.Serialization;
+using System;
 
 namespace Themisquo
 {
-    [Serializable]
     public class DispatcherExpiredException : Exception
     {
         public DispatcherExpiredException()
@@ -15,10 +13,6 @@ namespace Themisquo
         }
 
         public DispatcherExpiredException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
-
-        protected DispatcherExpiredException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
     }

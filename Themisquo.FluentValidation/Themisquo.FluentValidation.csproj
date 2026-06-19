@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Themisquo.FluentValidation</PackageId>
     <RootNamespace>Themisquo.FluentValidation</RootNamespace>
@@ -9,7 +9,7 @@
     <Title>Themisquo.FluentValidation - FluentValidation integration for Themisquo</Title>
     <RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
     <Authors>Thomas Volden</Authors>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
