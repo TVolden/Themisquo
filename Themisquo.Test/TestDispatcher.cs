@@ -1,5 +1,4 @@
-﻿using Microsoft.CSharp.RuntimeBinder;
-using NSubstitute;
+﻿using NSubstitute;
 
 namespace Themisquo.Test
 {
@@ -137,14 +136,14 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
-        public async Task Dispatch_NoQueryHandler_ThrowsRuntimeBinderException()
+        public async Task Dispatch_NoQueryHandler_ThrowsHandlerMissingException()
         {
             // Given
             var queryStub = Substitute.For<IQuery<int>>();
             var sut = new Dispatcher(Substitute.For<IServiceProvider>(), Substitute.For<IEventDispatcher>());
 
             // When
-            await Assert.ThrowsExceptionAsync<RuntimeBinderException>(async () =>
+            await Assert.ThrowsExceptionAsync<HandlerMissingException>(async () =>
             {
                 await sut.Dispatch(queryStub);
             });

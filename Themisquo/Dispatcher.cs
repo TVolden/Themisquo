@@ -8,39 +8,37 @@ namespace Themisquo
     {
         private readonly IServiceProvider provider;
         private readonly IEventDispatcher dispatcher;
+        private readonly IHandlerMethodResolver resolver;
 
         public Dispatcher(IServiceProvider serviceProvider, IEventDispatcher eventDispatcher)
+            : this(serviceProvider, eventDispatcher, new DefaultHandlerMethodResolver()) { }
+
+        public Dispatcher(IServiceProvider serviceProvider, IEventDispatcher eventDispatcher, IHandlerMethodResolver methodResolver)
         {
             provider = serviceProvider ?? throw new ArgumentNullException(nameof(IServiceProvider));
             dispatcher = eventDispatcher ?? throw new ArgumentNullException(nameof(eventDispatcher));
+            resolver = methodResolver ?? throw new ArgumentNullException(nameof(methodResolver));
         }
 
         public async Task Dispatch(ICommand command)
         {
-            // Identify command handler
-            Type commandHandlerType = typeof(ICommandHandler<>);
-            Type[] commandType = { command.GetType() };
-            Type genericHandlerType = commandHandlerType.MakeGenericType(commandType);
+            Type genericHandlerType = typeof(ICommandHandler<>).MakeGenericType(command.GetType());
 
-            // Engage command handler
-            dynamic handler = provider.GetService(genericHandlerType) ?? throw new HandlerMissingException(genericHandlerType, command.GetType());
+            object handler = provider.GetService(genericHandlerType) ?? throw new HandlerMissingException(genericHandlerType, command.GetType());
 
-            // Prevent event dispatcher from accidently being persisted
             using var temp = new DisposableEventDispatcher(dispatcher);
-            await handler.Handle((dynamic)command, temp);
+            var handleMethod = resolver.Resolve(handler.GetType(), typeof(ICommandHandler<>), genericHandlerType);
+            await (Task)handleMethod.Invoke(handler, new object[] { command, temp });
         }
 
         public async Task<T> Dispatch<T>(IQuery<T> query)
         {
-            // Identify query handler
-            Type queryHandlerType = typeof(IQueryHandler<,>);
-            Type[] queryType = { query.GetType(), typeof(T) };
-            Type genericHandlerType = queryHandlerType.MakeGenericType(queryType);
+            Type genericHandlerType = typeof(IQueryHandler<,>).MakeGenericType(query.GetType(), typeof(T));
 
-            // Engage query handler
-            dynamic handler = provider.GetService(genericHandlerType);
-            T result = await handler.Handle((dynamic)query);
-            return result;
+            object handler = provider.GetService(genericHandlerType) ?? throw new HandlerMissingException(genericHandlerType, query.GetType());
+
+            var handleMethod = resolver.Resolve(handler.GetType(), typeof(IQueryHandler<,>), genericHandlerType);
+            return await (Task<T>)handleMethod.Invoke(handler, new object[] { query });
         }
     }
 }

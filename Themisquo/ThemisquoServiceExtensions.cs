@@ -6,10 +6,18 @@ namespace Themisquo
     {
         public static IServiceCollection AddThemisquo(this IServiceCollection services)
         {
+            services.AddSingleton<IHandlerMethodResolver, DefaultHandlerMethodResolver>();
             services.AddScoped<Dispatcher>();
             services.AddScoped<IDispatcher>(sp => sp.GetRequiredService<Dispatcher>());
             services.AddScoped<IQueryDispatcher>(sp => sp.GetRequiredService<Dispatcher>());
             services.AddScoped<IEventDispatcher, ServiceProviderEventDispatcher>();
+            return services;
+        }
+
+        public static IServiceCollection AddCachingDispatch(this IServiceCollection services)
+        {
+            services.AddSingleton<IHandlerMethodResolver>(sp =>
+                new CachingHandlerMethodResolver(new DefaultHandlerMethodResolver()));
             return services;
         }
 
