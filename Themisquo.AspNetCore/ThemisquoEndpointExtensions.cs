@@ -56,9 +56,9 @@ public static class ThemisquoEndpointExtensions
         Type resultType,
         string httpMethod = "GET")
     {
-        var methodInfo = typeof(ThemisquoEndpointExtensions).GetMethod(nameof(MapQuery), [typeof(IEndpointRouteBuilder), typeof(string)]);
+        var methodInfo = typeof(ThemisquoEndpointExtensions).GetMethod(nameof(MapQuery), [typeof(IEndpointRouteBuilder), typeof(string), typeof(string)]);
         MethodInfo genericMethod = methodInfo.MakeGenericMethod(queryType, resultType);
-        genericMethod.Invoke(obj: null, [endpoints, pattern]);
+        genericMethod.Invoke(obj: null, [endpoints, pattern, httpMethod]);
         return endpoints;
     }
 
