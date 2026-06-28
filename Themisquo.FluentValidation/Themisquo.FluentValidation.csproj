@@ -9,7 +9,7 @@
     <Title>Themisquo.FluentValidation - FluentValidation integration for Themisquo</Title>
     <RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
     <Authors>Thomas Volden</Authors>
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

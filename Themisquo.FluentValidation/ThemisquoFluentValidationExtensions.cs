@@ -17,7 +17,7 @@ namespace Themisquo.FluentValidation
             var validatorOpenType = typeof(IValidator<>);
 
             var registrations = assembly.GetTypes()
-                .Where(t => !t.IsAbstract && !t.IsInterface)
+                .Where(t => !t.IsAbstract && !t.IsInterface && typeof(IValidator).IsAssignableFrom(t))
                 .SelectMany(t => t.GetInterfaces()
                     .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == validatorOpenType)
                     .Select(i => (ValidatorType: t, ValidatedType: i.GetGenericArguments()[0], Interface: i)))
