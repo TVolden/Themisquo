@@ -5,112 +5,120 @@ using Themisquo.FluentValidation;
 namespace Themisquo.Test
 {
     [TestClass]
-    public class TestValidatingHandlerDecorators
+    public class TestValidatingDispatcher
     {
         [TestMethod]
-        public async Task Handle_ValidCommand_CallsInnerHandler()
+        public async Task Dispatch_ValidCommand_CallsInnerDispatcher()
         {
             // Given
             var command = new CommandStub();
-            var innerHandler = Substitute.For<ICommandHandler<CommandStub>>();
-            var sut = new ValidatingCommandHandlerDecorator<CommandStub, PassingCommandValidator>(
-                innerHandler, new PassingCommandValidator());
+            var innerDispatcher = Substitute.For<IDispatcher>();
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<CommandStub>)).Returns(new PassingCommandValidator());
+            var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            await sut.Handle(command, Substitute.For<IEventDispatcher>());
+            await sut.Dispatch(command);
 
             // Then
-            await innerHandler.Received().Handle(command, Arg.Any<IEventDispatcher>());
+            await innerDispatcher.Received().Dispatch(command);
         }
 
         [TestMethod]
-        public async Task Handle_InvalidCommand_ThrowsValidationException()
+        public async Task Dispatch_InvalidCommand_ThrowsValidationException()
         {
             // Given
             var command = new CommandStub();
-            var sut = new ValidatingCommandHandlerDecorator<CommandStub, FailingCommandValidator>(
-                Substitute.For<ICommandHandler<CommandStub>>(), new FailingCommandValidator());
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<CommandStub>)).Returns(new FailingCommandValidator());
+            var sut = new ValidatingDispatcher(Substitute.For<IDispatcher>(), provider);
 
             // When / Then
             await Assert.ThrowsExceptionAsync<ValidationException>(async () =>
-                await sut.Handle(command, Substitute.For<IEventDispatcher>()));
+                await sut.Dispatch(command));
         }
 
         [TestMethod]
-        public async Task Handle_InvalidCommand_InnerHandlerNotCalled()
+        public async Task Dispatch_InvalidCommand_InnerDispatcherNotCalled()
         {
             // Given
             var command = new CommandStub();
-            var innerHandler = Substitute.For<ICommandHandler<CommandStub>>();
-            var sut = new ValidatingCommandHandlerDecorator<CommandStub, FailingCommandValidator>(
-                innerHandler, new FailingCommandValidator());
+            var innerDispatcher = Substitute.For<IDispatcher>();
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<CommandStub>)).Returns(new FailingCommandValidator());
+            var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            try { await sut.Handle(command, Substitute.For<IEventDispatcher>()); } catch (ValidationException) { }
+            try { await sut.Dispatch(command); } catch (ValidationException) { }
 
             // Then
-            await innerHandler.DidNotReceive().Handle(Arg.Any<CommandStub>(), Arg.Any<IEventDispatcher>());
+            await innerDispatcher.DidNotReceive().Dispatch(Arg.Any<ICommand>());
         }
 
         [TestMethod]
-        public async Task Handle_ValidCommand_PassesCommandToInnerHandler()
+        public async Task Dispatch_NoValidatorForCommand_CallsInnerDispatcher()
         {
             // Given
             var command = new CommandStub();
-            var innerHandler = Substitute.For<ICommandHandler<CommandStub>>();
-            var sut = new ValidatingCommandHandlerDecorator<CommandStub, PassingCommandValidator>(
-                innerHandler, new PassingCommandValidator());
+            var innerDispatcher = Substitute.For<IDispatcher>();
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<CommandStub>)).Returns(null);
+            var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            await sut.Handle(command, Substitute.For<IEventDispatcher>());
+            await sut.Dispatch(command);
 
             // Then
-            await innerHandler.Received().Handle(command, Arg.Any<IEventDispatcher>());
+            await innerDispatcher.Received().Dispatch(command);
         }
 
         [TestMethod]
-        public async Task Handle_ValidCommand_PassesEventDispatcherToInnerHandler()
-        {
-            // Given
-            var command = new CommandStub();
-            var innerHandler = Substitute.For<ICommandHandler<CommandStub>>();
-            var eventDispatcher = Substitute.For<IEventDispatcher>();
-            var sut = new ValidatingCommandHandlerDecorator<CommandStub, PassingCommandValidator>(
-                innerHandler, new PassingCommandValidator());
-
-            // When
-            await sut.Handle(command, eventDispatcher);
-
-            // Then
-            await innerHandler.Received().Handle(Arg.Any<CommandStub>(), eventDispatcher);
-        }
-
-        [TestMethod]
-        public async Task Handle_InvalidQuery_ThrowsValidationException()
+        public async Task Dispatch_InvalidQuery_ThrowsValidationException()
         {
             // Given
             var query = new QueryStub();
-            var sut = new ValidatingQueryHandlerDecorator<QueryStub, int, FailingQueryValidator>(
-                Substitute.For<IQueryHandler<QueryStub, int>>(), new FailingQueryValidator());
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<QueryStub>)).Returns(new FailingQueryValidator());
+            var sut = new ValidatingDispatcher(Substitute.For<IDispatcher>(), provider);
 
             // When / Then
             await Assert.ThrowsExceptionAsync<ValidationException>(async () =>
-                await sut.Handle(query));
+                await sut.Dispatch(query));
         }
 
         [TestMethod]
-        public async Task Handle_ValidQuery_ReturnsResultFromInnerHandler()
+        public async Task Dispatch_ValidQuery_ReturnsResultFromInnerDispatcher()
         {
             // Given
             var expected = 42;
             var query = new QueryStub();
-            var innerHandler = Substitute.For<IQueryHandler<QueryStub, int>>();
-            innerHandler.Handle(query).Returns(expected);
-            var sut = new ValidatingQueryHandlerDecorator<QueryStub, int, PassingQueryValidator>(
-                innerHandler, new PassingQueryValidator());
+            var innerDispatcher = Substitute.For<IDispatcher>();
+            innerDispatcher.Dispatch(query).Returns(expected);
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<QueryStub>)).Returns(new PassingQueryValidator());
+            var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            var result = await sut.Handle(query);
+            var result = await sut.Dispatch(query);
+
+            // Then
+            Assert.AreEqual(expected, result);
+        }
+
+        [TestMethod]
+        public async Task Dispatch_NoValidatorForQuery_ReturnsResultFromInnerDispatcher()
+        {
+            // Given
+            var expected = 42;
+            var query = new QueryStub();
+            var innerDispatcher = Substitute.For<IDispatcher>();
+            innerDispatcher.Dispatch(query).Returns(expected);
+            var provider = Substitute.For<IServiceProvider>();
+            provider.GetService(typeof(IValidator<QueryStub>)).Returns(null);
+            var sut = new ValidatingDispatcher(innerDispatcher, provider);
+
+            // When
+            var result = await sut.Dispatch(query);
 
             // Then
             Assert.AreEqual(expected, result);

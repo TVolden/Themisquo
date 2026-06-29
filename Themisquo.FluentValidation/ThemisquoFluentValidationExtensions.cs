@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using System.Reflection;
 using FluentValidation;
@@ -34,31 +33,11 @@ namespace Themisquo.FluentValidation
             return services;
         }
 
-        public static IServiceCollection AddValidatingCommandHandler<THandler, TCommand, TValidator>(this IServiceCollection services)
-            where THandler : class, IValidatingCommandHandler<TCommand, TValidator>
-            where TCommand : ICommand
-            where TValidator : class, IValidator<TCommand>
+        public static IServiceCollection AddValidatingDispatcher(this IServiceCollection services)
         {
-            services.AddScoped<THandler>();
-            services.TryAddScoped<TValidator>();
-            services.AddScoped<ICommandHandler<TCommand>>(sp =>
-                new ValidatingCommandHandlerDecorator<TCommand, TValidator>(
-                    sp.GetRequiredService<THandler>(),
-                    sp.GetRequiredService<TValidator>()));
-            return services;
-        }
-
-        public static IServiceCollection AddValidatingQueryHandler<THandler, TQuery, TResult, TValidator>(this IServiceCollection services)
-            where THandler : class, IValidatingQueryHandler<TQuery, TResult, TValidator>
-            where TQuery : IQuery<TResult>
-            where TValidator : class, IValidator<TQuery>
-        {
-            services.AddScoped<THandler>();
-            services.TryAddScoped<TValidator>();
-            services.AddScoped<IQueryHandler<TQuery, TResult>>(sp =>
-                new ValidatingQueryHandlerDecorator<TQuery, TResult, TValidator>(
-                    sp.GetRequiredService<THandler>(),
-                    sp.GetRequiredService<TValidator>()));
+            services.AddScoped<IDispatcher>(sp =>
+                new ValidatingDispatcher(sp.GetRequiredService<Dispatcher>(), sp));
+            services.AddScoped<IQueryDispatcher>(sp => sp.GetRequiredService<IDispatcher>());
             return services;
         }
     }
