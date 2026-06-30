@@ -10,11 +10,15 @@
     <Title>Themisquo.AspNetCore - ASP.NET Core integration for Themisquo</Title>
     <RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
     <Authors>Thomas Volden</Authors>
-    <Version>0.2.2</Version>
+    <Version>0.2.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="11.11.0" />
   </ItemGroup>
 
   <ItemGroup>
