@@ -6,7 +6,7 @@ namespace Themisquo
 {
     public class CachingHandlerMethodResolver : IHandlerMethodResolver
     {
-        private readonly ConcurrentDictionary<(Type, Type), MethodInfo> _cache = new();
+        private readonly ConcurrentDictionary<(Type, Type, string), MethodInfo> _cache = new();
         private readonly IHandlerMethodResolver _inner;
 
         public CachingHandlerMethodResolver(IHandlerMethodResolver inner)
@@ -14,8 +14,8 @@ namespace Themisquo
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         }
 
-        public MethodInfo Resolve(Type handlerType, Type openGenericInterface, Type fallback) =>
-            _cache.GetOrAdd((handlerType, openGenericInterface),
-                _ => _inner.Resolve(handlerType, openGenericInterface, fallback));
+        public MethodInfo Resolve(Type handlerType, Type openGenericInterface, Type fallback, string methodName) =>
+            _cache.GetOrAdd((handlerType, openGenericInterface, methodName),
+                _ => _inner.Resolve(handlerType, openGenericInterface, fallback, methodName));
     }
 }

@@ -5,6 +5,6 @@ namespace Themisquo
 {
     public interface IHandlerMethodResolver
     {
-        MethodInfo Resolve(Type handlerType, Type openGenericInterface, Type fallback);
+        MethodInfo Resolve(Type handlerType, Type openGenericInterface, Type fallback, string methodName);
     }
 }
