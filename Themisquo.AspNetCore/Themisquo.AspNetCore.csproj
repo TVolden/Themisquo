@@ -10,7 +10,7 @@
     <Title>Themisquo.AspNetCore - ASP.NET Core integration for Themisquo</Title>
     <RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
     <Authors>Thomas Volden</Authors>
-    <Version>0.2.3</Version>
+    <Version>0.2.4</Version>
   </PropertyGroup>
 
   <ItemGroup>
