@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
+using System.ComponentModel;
 using System.Reflection;
 using Themisquo;
 
@@ -14,14 +15,41 @@ public static class ThemisquoEndpointExtensions
         this IEndpointRouteBuilder endpoints,
         string pattern,
         string httpMethod = "POST")
-        where TCommand : ICommand
+        where TCommand : ICommand, new()
     {
-        endpoints.MapMethods(pattern, [httpMethod], async ([FromBody] TCommand command, IDispatcher dispatcher) =>
+        endpoints.MapMethods(pattern, [httpMethod], async (HttpContext context, IDispatcher dispatcher) =>
         {
+            var command = context.Request.HasJsonContentType()
+                ? await context.Request.ReadFromJsonAsync<TCommand>()
+                    ?? throw new BadHttpRequestException("Request body is required.")
+                : new TCommand();
+
+            BindRouteValues(command, context.Request.RouteValues);
+
             await dispatcher.Dispatch(command);
             return Results.Ok();
         });
         return endpoints;
+    }
+
+    private static void BindRouteValues(object target, RouteValueDictionary routeValues)
+    {
+        var properties = target.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        foreach (var (key, value) in routeValues)
+        {
+            var property = properties.FirstOrDefault(p =>
+                string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+
+            if (property is not { CanWrite: true } || value is null)
+                continue;
+
+            var converter = TypeDescriptor.GetConverter(property.PropertyType);
+            if (converter.CanConvertFrom(typeof(string)))
+            {
+                property.SetValue(target, converter.ConvertFromString(value.ToString()!));
+            }
+        }
     }
 
     public static IEndpointRouteBuilder MapCommand(
