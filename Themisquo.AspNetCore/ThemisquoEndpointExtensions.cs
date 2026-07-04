@@ -3,53 +3,57 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
-using System.ComponentModel;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Themisquo;
 
 namespace Themisquo.AspNetCore;
 
 public static class ThemisquoEndpointExtensions
 {
+    private static readonly JsonNodeOptions RouteBindingNodeOptions = new() { PropertyNameCaseInsensitive = true };
+
+    private static readonly JsonSerializerOptions RouteBindingSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        NumberHandling = JsonNumberHandling.AllowReadingFromString,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     public static IEndpointRouteBuilder MapCommand<TCommand>(
         this IEndpointRouteBuilder endpoints,
         string pattern,
         string httpMethod = "POST")
-        where TCommand : ICommand, new()
+        where TCommand : ICommand
     {
         endpoints.MapMethods(pattern, [httpMethod], async (HttpContext context, IDispatcher dispatcher) =>
         {
-            var command = context.Request.HasJsonContentType()
-                ? await context.Request.ReadFromJsonAsync<TCommand>()
-                    ?? throw new BadHttpRequestException("Request body is required.")
-                : new TCommand();
-
-            BindRouteValues(command, context.Request.RouteValues);
-
+            var command = await BindCommandAsync<TCommand>(context.Request);
             await dispatcher.Dispatch(command);
             return Results.Ok();
         });
         return endpoints;
     }
 
-    private static void BindRouteValues(object target, RouteValueDictionary routeValues)
+    private static async Task<TCommand> BindCommandAsync<TCommand>(HttpRequest request)
     {
-        var properties = target.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var json = request.HasJsonContentType()
+            ? await JsonNode.ParseAsync(request.Body, RouteBindingNodeOptions) as JsonObject
+                ?? new JsonObject(RouteBindingNodeOptions)
+            : new JsonObject(RouteBindingNodeOptions);
 
-        foreach (var (key, value) in routeValues)
+        foreach (var (key, value) in request.RouteValues)
         {
-            var property = properties.FirstOrDefault(p =>
-                string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
-
-            if (property is not { CanWrite: true } || value is null)
-                continue;
-
-            var converter = TypeDescriptor.GetConverter(property.PropertyType);
-            if (converter.CanConvertFrom(typeof(string)))
+            if (value is not null)
             {
-                property.SetValue(target, converter.ConvertFromString(value.ToString()!));
+                json[key] = JsonValue.Create(value.ToString());
             }
         }
+
+        return json.Deserialize<TCommand>(RouteBindingSerializerOptions)
+            ?? throw new BadHttpRequestException("Request body could not be bound.");
     }
 
     public static IEndpointRouteBuilder MapCommand(
@@ -58,7 +62,8 @@ public static class ThemisquoEndpointExtensions
         Type commandType,
         string httpMethod = "POST")
     {
-        var methodInfo = typeof(ThemisquoEndpointExtensions).GetMethod(nameof(MapCommand), [typeof(IEndpointRouteBuilder), typeof(string), typeof(string)]);
+        var methodInfo = typeof(ThemisquoEndpointExtensions).GetMethod(nameof(MapCommand), [typeof(IEndpointRouteBuilder), typeof(string), typeof(string)])
+            ?? throw new InvalidOperationException($"Could not resolve the generic {nameof(MapCommand)} method via reflection.");
         MethodInfo genericMethod = methodInfo.MakeGenericMethod(commandType);
         genericMethod.Invoke(obj: null, [endpoints, pattern, httpMethod]);
         return endpoints;
@@ -84,7 +89,8 @@ public static class ThemisquoEndpointExtensions
         Type resultType,
         string httpMethod = "GET")
     {
-        var methodInfo = typeof(ThemisquoEndpointExtensions).GetMethod(nameof(MapQuery), [typeof(IEndpointRouteBuilder), typeof(string), typeof(string)]);
+        var methodInfo = typeof(ThemisquoEndpointExtensions).GetMethod(nameof(MapQuery), [typeof(IEndpointRouteBuilder), typeof(string), typeof(string)])
+            ?? throw new InvalidOperationException($"Could not resolve the generic {nameof(MapQuery)} method via reflection.");
         MethodInfo genericMethod = methodInfo.MakeGenericMethod(queryType, resultType);
         genericMethod.Invoke(obj: null, [endpoints, pattern, httpMethod]);
         return endpoints;

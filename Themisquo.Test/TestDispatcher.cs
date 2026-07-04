@@ -10,7 +10,7 @@ namespace Themisquo.Test
         public void Instantiate_MissingServiceProvider_ThrowsArgumentNullException()
         {
             // Given
-            IServiceProvider service = null;
+            IServiceProvider service = null!;
 
             // When
             Assert.ThrowsException<ArgumentNullException>(() => {
@@ -22,7 +22,7 @@ namespace Themisquo.Test
         public void Instantiate_MissingEventDispatcher_ThrowsArgumentNullException()
         {
             // Given
-            IEventDispatcher dispatcher = null;
+            IEventDispatcher dispatcher = null!;
 
             // When
             Assert.ThrowsException<ArgumentNullException>(() => {
@@ -119,7 +119,7 @@ namespace Themisquo.Test
         public async Task EventDispatcherDispatch_OutOfScope_ThrowsException()
         {
             // Given
-            IEventDispatcher persistedEventDispatcher = null;
+            IEventDispatcher persistedEventDispatcher = null!;
             var commandStub = new CommandStub();
             var providerMock = Substitute.For<IServiceProvider>();
             var commandHandlerMock = Substitute.For<ICommandHandler<ICommand>>();

@@ -26,7 +26,9 @@ namespace Themisquo
 
             // Invoke event observer
             var invokeMethod = resolver.Resolve(observer.GetType(), typeof(IEventObserver<>), genericObserverType, "Invoke");
-            await (Task)invokeMethod.Invoke(observer, [@event]);
+            var task = invokeMethod.Invoke(observer, [@event]) as Task
+                ?? throw new InvalidOperationException($"Method '{invokeMethod.Name}' on '{observer.GetType()}' did not return a Task.");
+            await task;
         }
     }
 }

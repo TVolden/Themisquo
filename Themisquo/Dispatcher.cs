@@ -28,7 +28,9 @@ namespace Themisquo
 
             using var temp = new DisposableEventDispatcher(dispatcher);
             var handleMethod = resolver.Resolve(handler.GetType(), typeof(ICommandHandler<>), genericHandlerType, "Handle");
-            await (Task)handleMethod.Invoke(handler, [command, temp]);
+            var task = handleMethod.Invoke(handler, [command, temp]) as Task
+                ?? throw new InvalidOperationException($"Method '{handleMethod.Name}' on '{handler.GetType()}' did not return a Task.");
+            await task;
         }
 
         public async Task<T> Dispatch<T>(IQuery<T> query)
@@ -38,7 +40,9 @@ namespace Themisquo
             object handler = provider.GetService(genericHandlerType) ?? throw new HandlerMissingException(genericHandlerType, query.GetType());
 
             var handleMethod = resolver.Resolve(handler.GetType(), typeof(IQueryHandler<,>), genericHandlerType, "Handle");
-            return await (Task<T>)handleMethod.Invoke(handler, [query]);
+            var task = handleMethod.Invoke(handler, [query]) as Task<T>
+                ?? throw new InvalidOperationException($"Method '{handleMethod.Name}' on '{handler.GetType()}' did not return a Task<{typeof(T)}>.");
+            return await task;
         }
     }
 }
