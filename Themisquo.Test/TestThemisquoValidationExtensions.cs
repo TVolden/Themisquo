@@ -124,6 +124,25 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
+        public void ValidateHandlersRegistered_NoAssembliesGiven_DiscoversAssembliesReferencingThemisquo()
+        {
+            // Given: no handlers registered, and no assembly passed in. Themisquo.Test references Themisquo, so
+            // it should be discovered automatically, the same way it would be if it were passed explicitly.
+            var provider = new ServiceCollection().BuildServiceProvider();
+
+            // When
+            var exception = Assert.ThrowsException<MissingHandlersException>(() =>
+            {
+                provider.ValidateHandlersRegistered();
+            });
+
+            // Then
+            Assert.IsTrue(exception.MissingHandlers.Any(m => m.ExpectedType == typeof(ICommandHandler<CommandStub>)));
+            Assert.IsTrue(exception.MissingHandlers.Any(m => m.ExpectedType == typeof(IQueryHandler<QueryStub, int>)));
+            Assert.IsTrue(exception.MissingHandlers.Any(m => m.ExpectedType == typeof(IEventObserver<EventStub>)));
+        }
+
+        [TestMethod]
         public void ValidateHandlersRegistered_HandlerRegisteredAsOpenGeneric_DoesNotReportMissing()
         {
             // Given: a cross-cutting handler registered for every command via an open generic registration,

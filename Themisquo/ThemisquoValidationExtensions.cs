@@ -9,7 +9,8 @@ namespace Themisquo
     public static class ThemisquoValidationExtensions
     {
         /// <summary>
-        /// Scans the given assemblies for commands, queries and events, and verifies that a corresponding handler
+        /// Scans the given assemblies (or, if none are given, every loaded assembly that references this library)
+        /// for commands, queries and events, and verifies that a corresponding handler
         /// (<see cref="ICommandHandler{TCommand}"/>, <see cref="IQueryHandler{TQuery, TResult}"/> or
         /// <see cref="IEventObserver{TEvent}"/>) can be resolved from the service provider. This lets missing
         /// registrations be caught at startup instead of when the command/query/event is dispatched at runtime.
@@ -17,7 +18,16 @@ namespace Themisquo
         /// <exception cref="MissingHandlersException">Thrown when one or more handlers are missing.</exception>
         public static IServiceProvider ValidateHandlersRegistered(this IServiceProvider provider, params Assembly[] assemblies)
         {
-            return provider.ValidateHandlersRegistered(assemblies.SelectMany(assembly => assembly.GetTypes()));
+            var assembliesToScan = assemblies.Length > 0 ? assemblies : GetAssembliesReferencingThemisquo();
+            return provider.ValidateHandlersRegistered(assembliesToScan.SelectMany(assembly => assembly.GetTypes()));
+        }
+
+        private static IEnumerable<Assembly> GetAssembliesReferencingThemisquo()
+        {
+            var coreAssemblyName = typeof(ICommand).Assembly.GetName().Name;
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .Where(assembly => assembly.GetName().Name == coreAssemblyName
+                    || assembly.GetReferencedAssemblies().Any(reference => reference.Name == coreAssemblyName));
         }
 
         /// <summary>
