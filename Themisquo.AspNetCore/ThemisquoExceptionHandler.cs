@@ -12,7 +12,7 @@ public sealed class ThemisquoExceptionHandler(IOptions<ThemisquoExceptionHandler
             return false;
 
         httpContext.Response.StatusCode = problemDetails.Status ?? StatusCodes.Status500InternalServerError;
-        await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(problemDetails, problemDetails.GetType(), cancellationToken);
         return true;
     }
 }
