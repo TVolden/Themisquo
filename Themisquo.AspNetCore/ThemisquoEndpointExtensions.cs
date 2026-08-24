@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -32,6 +34,16 @@ public static class ThemisquoEndpointExtensions
         {
             var command = await BindCommandAsync<TCommand>(context.Request);
             await dispatcher.Dispatch(command);
+
+            var recordedEvents = context.RequestServices.GetService<RecordedEvents>();
+            var locatedEvent = recordedEvents?.Events.FirstOrDefault(e => e.GetType().IsDefined(typeof(LocationAttribute)));
+            if (locatedEvent is not null)
+            {
+                var locationAttribute = locatedEvent.GetType().GetCustomAttribute<LocationAttribute>()!;
+                var location = LocationTemplate.Resolve(locationAttribute.UrlTemplate, locatedEvent);
+                return Results.Created(location, null);
+            }
+
             return Results.Ok();
         });
         return endpoints;
