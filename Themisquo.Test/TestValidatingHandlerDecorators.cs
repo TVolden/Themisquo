@@ -18,10 +18,10 @@ namespace Themisquo.Test
             var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            await sut.Dispatch(command);
+            await sut.Dispatch(command, CancellationToken.None);
 
             // Then
-            await innerDispatcher.Received().Dispatch(command);
+            await innerDispatcher.Received().Dispatch(command, Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -35,7 +35,7 @@ namespace Themisquo.Test
 
             // When / Then
             await Assert.ThrowsExceptionAsync<ValidationException>(async () =>
-                await sut.Dispatch(command));
+                await sut.Dispatch(command, CancellationToken.None));
         }
 
         [TestMethod]
@@ -49,10 +49,10 @@ namespace Themisquo.Test
             var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            try { await sut.Dispatch(command); } catch (ValidationException) { }
+            try { await sut.Dispatch(command, CancellationToken.None); } catch (ValidationException) { }
 
             // Then
-            await innerDispatcher.DidNotReceive().Dispatch(Arg.Any<ICommand>());
+            await innerDispatcher.DidNotReceive().Dispatch(Arg.Any<ICommand>(), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -66,10 +66,10 @@ namespace Themisquo.Test
             var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            await sut.Dispatch(command);
+            await sut.Dispatch(command, CancellationToken.None);
 
             // Then
-            await innerDispatcher.Received().Dispatch(command);
+            await innerDispatcher.Received().Dispatch(command, Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -83,7 +83,7 @@ namespace Themisquo.Test
 
             // When / Then
             await Assert.ThrowsExceptionAsync<ValidationException>(async () =>
-                await sut.Dispatch(query));
+                await sut.Dispatch(query, CancellationToken.None));
         }
 
         [TestMethod]
@@ -93,13 +93,13 @@ namespace Themisquo.Test
             var expected = 42;
             var query = new QueryStub();
             var innerDispatcher = Substitute.For<IDispatcher>();
-            innerDispatcher.Dispatch(query).Returns(expected);
+            innerDispatcher.Dispatch(query, Arg.Any<CancellationToken>()).Returns(expected);
             var provider = Substitute.For<IServiceProvider>();
             provider.GetService(typeof(IValidator<QueryStub>)).Returns(new PassingQueryValidator());
             var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            var result = await sut.Dispatch(query);
+            var result = await sut.Dispatch(query, CancellationToken.None);
 
             // Then
             Assert.AreEqual(expected, result);
@@ -112,13 +112,13 @@ namespace Themisquo.Test
             var expected = 42;
             var query = new QueryStub();
             var innerDispatcher = Substitute.For<IDispatcher>();
-            innerDispatcher.Dispatch(query).Returns(expected);
+            innerDispatcher.Dispatch(query, Arg.Any<CancellationToken>()).Returns(expected);
             var provider = Substitute.For<IServiceProvider>();
             provider.GetService(typeof(IValidator<QueryStub>)).Returns(null);
             var sut = new ValidatingDispatcher(innerDispatcher, provider);
 
             // When
-            var result = await sut.Dispatch(query);
+            var result = await sut.Dispatch(query, CancellationToken.None);
 
             // Then
             Assert.AreEqual(expected, result);

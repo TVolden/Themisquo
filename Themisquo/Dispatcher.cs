@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Themisquo
@@ -20,7 +21,7 @@ namespace Themisquo
             resolver = methodResolver ?? throw new ArgumentNullException(nameof(methodResolver));
         }
 
-        public async Task Dispatch(ICommand command)
+        public async Task Dispatch(ICommand command, CancellationToken cancellationToken)
         {
             Type genericHandlerType = typeof(ICommandHandler<>).MakeGenericType(command.GetType());
 
@@ -28,19 +29,19 @@ namespace Themisquo
 
             using var temp = new DisposableEventDispatcher(dispatcher);
             var handleMethod = resolver.Resolve(handler.GetType(), typeof(ICommandHandler<>), genericHandlerType, "Handle");
-            var task = handleMethod.Invoke(handler, [command, temp]) as Task
+            var task = handleMethod.Invoke(handler, [command, temp, cancellationToken]) as Task
                 ?? throw new InvalidOperationException($"Method '{handleMethod.Name}' on '{handler.GetType()}' did not return a Task.");
             await task;
         }
 
-        public async Task<T> Dispatch<T>(IQuery<T> query)
+        public async Task<T> Dispatch<T>(IQuery<T> query, CancellationToken cancellationToken)
         {
             Type genericHandlerType = typeof(IQueryHandler<,>).MakeGenericType(query.GetType(), typeof(T));
 
             object handler = provider.GetService(genericHandlerType) ?? throw new HandlerMissingException(genericHandlerType, query.GetType());
 
             var handleMethod = resolver.Resolve(handler.GetType(), typeof(IQueryHandler<,>), genericHandlerType, "Handle");
-            var task = handleMethod.Invoke(handler, [query]) as Task<T>
+            var task = handleMethod.Invoke(handler, [query, cancellationToken]) as Task<T>
                 ?? throw new InvalidOperationException($"Method '{handleMethod.Name}' on '{handler.GetType()}' did not return a Task<{typeof(T)}>.");
             return await task;
         }

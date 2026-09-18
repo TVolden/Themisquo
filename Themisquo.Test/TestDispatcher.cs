@@ -41,7 +41,7 @@ namespace Themisquo.Test
             // When
             await Assert.ThrowsExceptionAsync<HandlerMissingException>(async () =>
             {
-                await sut.Dispatch(someCommandStub);
+                await sut.Dispatch(someCommandStub, CancellationToken.None);
             });
         }
 
@@ -55,7 +55,7 @@ namespace Themisquo.Test
             providerMock.GetService(Arg.Any<Type>()).Returns(Substitute.For<ICommandHandler<ICommand>>());
 
             // When
-            await sut.Dispatch(Substitute.For<ICommand>());
+            await sut.Dispatch(Substitute.For<ICommand>(), CancellationToken.None);
 
             // Then
             providerMock.Received().GetService(Arg.Any<Type>());
@@ -72,7 +72,7 @@ namespace Themisquo.Test
             providerMock.GetService(Arg.Any<Type>()).Returns(Substitute.For<ICommandHandler<ICommand>>());
 
             // When
-            await sut.Dispatch(commandStub);
+            await sut.Dispatch(commandStub, CancellationToken.None);
 
             // Then
             providerMock.Received().GetService(typeof(ICommandHandler<CommandStub>));
@@ -90,10 +90,10 @@ namespace Themisquo.Test
             providerMock.GetService(Arg.Any<Type>()).Returns(commandHandlerMock);
 
             // When
-            await sut.Dispatch(commandStub);
+            await sut.Dispatch(commandStub, CancellationToken.None);
 
             // Then
-            await commandHandlerMock.Received().Handle(commandStub, Arg.Any<IEventDispatcher>());
+            await commandHandlerMock.Received().Handle(commandStub, Arg.Any<IEventDispatcher>(), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -108,11 +108,11 @@ namespace Themisquo.Test
             var sut = new Dispatcher(providerStub, eventDispatcherMock);
 
             // When
-            await commandHandlerStub.Handle(commandStub, Arg.Do<IEventDispatcher>(ed => ed.Dispatch(Substitute.For<IEvent>())));
-            await sut.Dispatch(commandStub);
+            await commandHandlerStub.Handle(commandStub, Arg.Do<IEventDispatcher>(ed => ed.Dispatch(Substitute.For<IEvent>(), CancellationToken.None)), Arg.Any<CancellationToken>());
+            await sut.Dispatch(commandStub, CancellationToken.None);
 
             // Then
-            await eventDispatcherMock.Received().Dispatch(Arg.Any<IEvent>());
+            await eventDispatcherMock.Received().Dispatch(Arg.Any<IEvent>(), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -123,15 +123,15 @@ namespace Themisquo.Test
             var commandStub = new CommandStub();
             var providerMock = Substitute.For<IServiceProvider>();
             var commandHandlerMock = Substitute.For<ICommandHandler<ICommand>>();
-            await commandHandlerMock.Handle(commandStub, Arg.Do<IEventDispatcher>(ed => persistedEventDispatcher = ed));
+            await commandHandlerMock.Handle(commandStub, Arg.Do<IEventDispatcher>(ed => persistedEventDispatcher = ed), Arg.Any<CancellationToken>());
             var sut = new Dispatcher(providerMock, Substitute.For<IEventDispatcher>());
             providerMock.GetService(Arg.Any<Type>()).Returns(commandHandlerMock);
-            await sut.Dispatch(commandStub);
+            await sut.Dispatch(commandStub, CancellationToken.None);
 
             // When
             await Assert.ThrowsExceptionAsync<DispatcherExpiredException>(async () =>
             {
-                await persistedEventDispatcher.Dispatch(Substitute.For<IEvent>());
+                await persistedEventDispatcher.Dispatch(Substitute.For<IEvent>(), CancellationToken.None);
             });
         }
 
@@ -145,7 +145,7 @@ namespace Themisquo.Test
             // When
             await Assert.ThrowsExceptionAsync<HandlerMissingException>(async () =>
             {
-                await sut.Dispatch(queryStub);
+                await sut.Dispatch(queryStub, CancellationToken.None);
             });
         }
 
@@ -159,7 +159,7 @@ namespace Themisquo.Test
             providerMock.GetService(Arg.Any<Type>()).Returns(Substitute.For<IQueryHandler<IQuery<int>, int>>());
 
             // When
-            await sut.Dispatch(Substitute.For<IQuery<int>>());
+            await sut.Dispatch(Substitute.For<IQuery<int>>(), CancellationToken.None);
 
             // Then
             providerMock.Received().GetService(Arg.Any<Type>());
@@ -176,7 +176,7 @@ namespace Themisquo.Test
             providerMock.GetService(typeof(IQueryHandler<QueryStub, int>)).Returns(Substitute.For< IQueryHandler<IQuery<int>, int> >());
 
             // When
-            await sut.Dispatch(queryStub);
+            await sut.Dispatch(queryStub, CancellationToken.None);
 
             // Then
             providerMock.Received().GetService(typeof(IQueryHandler<QueryStub, int>));
@@ -194,10 +194,10 @@ namespace Themisquo.Test
             providerMock.GetService(typeof(IQueryHandler<QueryStub, int>)).Returns(queryHandler);
 
             // When
-            await sut.Dispatch(queryStub);
+            await sut.Dispatch(queryStub, CancellationToken.None);
 
             // Then
-            await queryHandler.Received().Handle(queryStub);
+            await queryHandler.Received().Handle(queryStub, Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -211,10 +211,10 @@ namespace Themisquo.Test
             var sut = new Dispatcher(providerMock, Substitute.For<IEventDispatcher>());
 
             providerMock.GetService(typeof(IQueryHandler<QueryStub, int>)).Returns(queryHandler);
-            queryHandler.Handle(queryStub).Returns(expected);
+            queryHandler.Handle(queryStub, Arg.Any<CancellationToken>()).Returns(expected);
 
             // When
-            var result = await sut.Dispatch(queryStub);
+            var result = await sut.Dispatch(queryStub, CancellationToken.None);
 
             // Then
             Assert.AreEqual(expected, result);

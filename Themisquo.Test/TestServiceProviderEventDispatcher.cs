@@ -15,7 +15,7 @@ namespace Themisquo.Test
             providerMock.GetService(Arg.Any<Type>()).Returns(Substitute.For<IEventObserver<IEvent>>());
 
             // When
-            sut.Dispatch(eventStub);
+            sut.Dispatch(eventStub, CancellationToken.None);
 
             // Then
             providerMock.Received().GetService(typeof(IEventObserver<EventStub>));
@@ -32,10 +32,10 @@ namespace Themisquo.Test
             providerMock.GetService(Arg.Any<Type>()).Returns(eventObserverMock);
 
             // When
-            sut.Dispatch(eventStub);
+            sut.Dispatch(eventStub, CancellationToken.None);
 
             // Then
-            eventObserverMock.Received().Invoke(eventStub);
+            eventObserverMock.Received().Invoke(eventStub, Arg.Any<CancellationToken>());
         }
 
         public class EventStub : IEvent

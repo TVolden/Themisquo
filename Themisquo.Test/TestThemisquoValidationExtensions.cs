@@ -167,19 +167,19 @@ namespace Themisquo.Test
 
         public class CommandStubHandler : ICommandHandler<CommandStub>
         {
-            public Task Handle(CommandStub command, IEventDispatcher eventDispatcher) => throw new NotImplementedException();
+            public Task Handle(CommandStub command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken) => throw new NotImplementedException();
         }
 
         public class GenericCommandHandler<TCommand> : ICommandHandler<TCommand> where TCommand : ICommand
         {
-            public Task Handle(TCommand command, IEventDispatcher eventDispatcher) => throw new NotImplementedException();
+            public Task Handle(TCommand command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken) => throw new NotImplementedException();
         }
 
         public class QueryStub : IQuery<int> { }
 
         public class QueryStubHandler : IQueryHandler<QueryStub, int>
         {
-            public Task<int> Handle(QueryStub query) => throw new NotImplementedException();
+            public Task<int> Handle(QueryStub query, CancellationToken cancellationToken) => throw new NotImplementedException();
         }
 
         public class EventStub : IEvent
@@ -191,7 +191,7 @@ namespace Themisquo.Test
 
         public class EventStubObserver : IEventObserver<EventStub>
         {
-            public Task Invoke(EventStub @event) => throw new NotImplementedException();
+            public Task Invoke(EventStub @event, CancellationToken cancellationToken) => throw new NotImplementedException();
         }
     }
 }

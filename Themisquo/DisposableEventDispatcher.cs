@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Themisquo
@@ -11,12 +12,12 @@ namespace Themisquo
             this.eventDispatcher = eventDispatcher;
         }
 
-        public Task Dispatch(IEvent @event)
+        public Task Dispatch(IEvent @event, CancellationToken cancellationToken)
         {
             if (eventDispatcher == null)
                 throw new DispatcherExpiredException();
             else
-                return eventDispatcher.Dispatch(@event);
+                return eventDispatcher.Dispatch(@event, cancellationToken);
         }
 
         public void Dispose()

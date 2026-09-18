@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Themisquo
@@ -17,7 +18,7 @@ namespace Themisquo
             resolver = methodResolver ?? throw new ArgumentNullException(nameof(methodResolver));
         }
 
-        public async Task Dispatch(IEvent @event)
+        public async Task Dispatch(IEvent @event, CancellationToken cancellationToken)
         {
             // Identify event observer
             Type genericObserverType = typeof(IEventObserver<>).MakeGenericType(@event.GetType());
@@ -26,7 +27,7 @@ namespace Themisquo
 
             // Invoke event observer
             var invokeMethod = resolver.Resolve(observer.GetType(), typeof(IEventObserver<>), genericObserverType, "Invoke");
-            var task = invokeMethod.Invoke(observer, [@event]) as Task
+            var task = invokeMethod.Invoke(observer, [@event, cancellationToken]) as Task
                 ?? throw new InvalidOperationException($"Method '{invokeMethod.Name}' on '{observer.GetType()}' did not return a Task.");
             await task;
         }

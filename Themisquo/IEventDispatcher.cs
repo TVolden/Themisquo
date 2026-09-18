@@ -1,9 +1,10 @@
-﻿using System.Threading.Tasks;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Themisquo
 {
     public interface IEventDispatcher
     {
-        Task Dispatch(IEvent @event);
+        Task Dispatch(IEvent @event, CancellationToken cancellationToken);
     }
 }

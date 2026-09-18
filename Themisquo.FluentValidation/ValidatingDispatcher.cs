@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentValidation;
 using Themisquo;
@@ -16,28 +17,28 @@ namespace Themisquo.FluentValidation
             this.provider = provider ?? throw new ArgumentNullException(nameof(provider));
         }
 
-        public async Task Dispatch(ICommand command)
+        public async Task Dispatch(ICommand command, CancellationToken cancellationToken)
         {
             var validatorType = typeof(IValidator<>).MakeGenericType(command.GetType());
             if (provider.GetService(validatorType) is IValidator validator)
             {
-                var result = await validator.ValidateAsync(new ValidationContext<object>(command));
+                var result = await validator.ValidateAsync(new ValidationContext<object>(command), cancellationToken);
                 if (!result.IsValid)
                     throw new ValidationException(result.Errors);
             }
-            await inner.Dispatch(command);
+            await inner.Dispatch(command, cancellationToken);
         }
 
-        public async Task<T> Dispatch<T>(IQuery<T> query)
+        public async Task<T> Dispatch<T>(IQuery<T> query, CancellationToken cancellationToken)
         {
             var validatorType = typeof(IValidator<>).MakeGenericType(query.GetType());
             if (provider.GetService(validatorType) is IValidator validator)
             {
-                var result = await validator.ValidateAsync(new ValidationContext<object>(query));
+                var result = await validator.ValidateAsync(new ValidationContext<object>(query), cancellationToken);
                 if (!result.IsValid)
                     throw new ValidationException(result.Errors);
             }
-            return await inner.Dispatch(query);
+            return await inner.Dispatch(query, cancellationToken);
         }
     }
 }

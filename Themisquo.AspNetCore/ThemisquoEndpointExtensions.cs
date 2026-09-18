@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -30,10 +31,10 @@ public static class ThemisquoEndpointExtensions
         string httpMethod = "POST")
         where TCommand : ICommand
     {
-        endpoints.MapMethods(pattern, [httpMethod], async (HttpContext context, IDispatcher dispatcher) =>
+        endpoints.MapMethods(pattern, [httpMethod], async (HttpContext context, IDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             var command = await BindCommandAsync<TCommand>(context.Request);
-            await dispatcher.Dispatch(command);
+            await dispatcher.Dispatch(command, cancellationToken);
 
             var recordedEvents = context.RequestServices.GetService<RecordedEvents>();
             var locatedEvent = recordedEvents?.Events.FirstOrDefault(e => e.GetType().IsDefined(typeof(LocationAttribute)));
@@ -87,9 +88,9 @@ public static class ThemisquoEndpointExtensions
         string httpMethod = "GET")
         where TQuery : IQuery<TResult>
     {
-        endpoints.MapMethods(pattern, [httpMethod], async ([AsParameters] TQuery query, IQueryDispatcher dispatcher) =>
+        endpoints.MapMethods(pattern, [httpMethod], async ([AsParameters] TQuery query, IQueryDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
-            var result = await dispatcher.Dispatch(query);
+            var result = await dispatcher.Dispatch(query, cancellationToken);
             return Results.Ok(result);
         });
         return endpoints;

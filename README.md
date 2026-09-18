@@ -42,10 +42,10 @@ public record CreateCardCommand(Guid ProjectId, string Title) : ICommand
 
 public class CreateCardCommandHandler : ICommandHandler<CreateCardCommand>
 {
-    public async Task Handle(CreateCardCommand command, IEventDispatcher eventDispatcher)
+    public async Task Handle(CreateCardCommand command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken)
     {
         // ... do the work ...
-        await eventDispatcher.Dispatch(new CardCreatedEvent(command.ProjectId, Guid.NewGuid()));
+        await eventDispatcher.Dispatch(new CardCreatedEvent(command.ProjectId, Guid.NewGuid()), cancellationToken);
     }
 }
 ```
@@ -57,7 +57,7 @@ public record GetCardQuery(Guid CardId) : IQuery<CardDto>;
 
 public class GetCardQueryHandler : IQueryHandler<GetCardQuery, CardDto>
 {
-    public async Task<CardDto> Handle(GetCardQuery query)
+    public async Task<CardDto> Handle(GetCardQuery query, CancellationToken cancellationToken)
     {
         // ... load and map ...
         return await Task.FromResult(new CardDto());
@@ -73,8 +73,8 @@ services.AddCommandHandler<CreateCardCommandHandler, CreateCardCommand>();
 services.AddQueryHandler<GetCardQueryHandler, GetCardQuery, CardDto>();
 
 // wherever you resolve IDispatcher / IQueryDispatcher from DI:
-await dispatcher.Dispatch(new CreateCardCommand(projectId, "New card"));
-var card = await dispatcher.Dispatch(new GetCardQuery(cardId));
+await dispatcher.Dispatch(new CreateCardCommand(projectId, "New card"), cancellationToken);
+var card = await dispatcher.Dispatch(new GetCardQuery(cardId), cancellationToken);
 ```
 
 ## Connecting commands and queries to API endpoints
@@ -183,11 +183,20 @@ app.UseExceptionHandler();
 
 Themisquo enforces the CQRS split structurally rather than by convention:
 
-* `ICommandHandler<TCommand>.Handle(command, eventDispatcher)` is the *only* place in a command's lifecycle that receives an `IEventDispatcher`. It's scoped to that single dispatch and is disposed as soon as the command finishes, so events can't be raised outside of handling a command.
-* `IQueryHandler<TQuery, TResult>.Handle(query)` never receives an event dispatcher at all, so a query handler is structurally unable to raise events or mutate state through Themisquo.
-* Commands describe intent (`CreateCard`); events describe facts that already happened (`CardCreated`). A command handler raises one or more events via `IEventDispatcher.Dispatch(IEvent)`, and each event is routed to its `IEventObserver<TEvent>` to apply side effects — persisting to an event store, updating a read model, publishing an integration event, etc.
+* `ICommandHandler<TCommand>.Handle(command, eventDispatcher, cancellationToken)` is the *only* place in a command's lifecycle that receives an `IEventDispatcher`. It's scoped to that single dispatch and is disposed as soon as the command finishes, so events can't be raised outside of handling a command.
+* `IQueryHandler<TQuery, TResult>.Handle(query, cancellationToken)` never receives an event dispatcher at all, so a query handler is structurally unable to raise events or mutate state through Themisquo.
+* Commands describe intent (`CreateCard`); events describe facts that already happened (`CardCreated`). A command handler raises one or more events via `IEventDispatcher.Dispatch(IEvent, CancellationToken)`, and each event is routed to its `IEventObserver<TEvent>` to apply side effects — persisting to an event store, updating a read model, publishing an integration event, etc.
 * Because handler resolution goes through your DI container, you decide the actual persistence/event-sourcing strategy; Themisquo only guarantees *when* and *how* handlers are invoked, not *what* they do.
 * `ValidateHandlersRegistered()` (see above) lets you assert at startup that every command, query, and event in your assemblies has a corresponding handler/observer registered, so a missing registration is a deployment-time failure instead of a runtime surprise.
+
+## Cancellation
+
+Every `Handle`/`Invoke`/`Dispatch` method on the abstractions above takes a required `CancellationToken` — there's no overload without one, so a handler can't quietly ignore cancellation by omission.
+
+Themisquo itself never cancels anything on your behalf: it just plumbs the token through so *you* can decide where honoring it is safe. That distinction matters most for `IEventObserver<TEvent>.Invoke`, since observers are typically the place where an event actually gets persisted (an event store, a read model, an outbox row). Aborting that write partway through can leave your data in a state Themisquo can't help you recover from. As a rule of thumb:
+
+* In a command handler, it's fine to check the token (or let an early `await` observe it) *before* you start committing anything — a request that was already cancelled shouldn't do work at all.
+* Once you're inside an observer's actual commit, don't let cancellation cut it short. Either don't check the token there, or explicitly pass `CancellationToken.None` to the persistence call itself, even though the method received a live token — you can still forward the live token to unrelated, safely-abortable work (e.g. an outbound HTTP call) in the same method.
 
 ## Integrating with MassTransit and RabbitMQ
 
@@ -203,7 +212,8 @@ public class MassTransitEventDispatcher : IEventDispatcher
     public MassTransitEventDispatcher(IPublishEndpoint publishEndpoint) =>
         this.publishEndpoint = publishEndpoint;
 
-    public Task Dispatch(IEvent @event) => publishEndpoint.Publish(@event, @event.GetType());
+    public Task Dispatch(IEvent @event, CancellationToken cancellationToken) =>
+        publishEndpoint.Publish(@event, @event.GetType(), cancellationToken);
 }
 ```
 
@@ -231,10 +241,13 @@ public class CardCreatedObserver : IEventObserver<CardCreatedEvent>
         this.store = store;
     }
 
-    public async Task Invoke(CardCreatedEvent @event)
+    public async Task Invoke(CardCreatedEvent @event, CancellationToken cancellationToken)
     {
-        await store.AppendAsync(@event);                 // persist the event
-        await publishEndpoint.Publish(new CardCreatedIntegrationEvent(@event.CardId)); // notify other services
+        // The append must not be left half-done, so it always runs to completion, even if the
+        // caller's token is already cancelled by the time we get here.
+        await store.AppendAsync(@event, CancellationToken.None);
+        // Publishing the integration event is safe to abort, so the live token is fine here.
+        await publishEndpoint.Publish(new CardCreatedIntegrationEvent(@event.CardId), cancellationToken);
     }
 }
 ```

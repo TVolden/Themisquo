@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Themisquo.AspNetCore
@@ -14,9 +15,9 @@ namespace Themisquo.AspNetCore
             this.recordedEvents = recordedEvents ?? throw new ArgumentNullException(nameof(recordedEvents));
         }
 
-        public async Task Dispatch(IEvent @event)
+        public async Task Dispatch(IEvent @event, CancellationToken cancellationToken)
         {
-            await inner.Dispatch(@event);
+            await inner.Dispatch(@event, cancellationToken);
             recordedEvents.Record(@event);
         }
     }

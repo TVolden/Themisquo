@@ -24,7 +24,7 @@ namespace Themisquo.Test
 
             // Then
             response.EnsureSuccessStatusCode();
-            await dispatcherMock.Received().Dispatch(Arg.Is<ICommand>(c => ((DeleteMyTypeCommand)c).Id == 123));
+            await dispatcherMock.Received().Dispatch(Arg.Is<ICommand>(c => ((DeleteMyTypeCommand)c).Id == 123), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -42,7 +42,7 @@ namespace Themisquo.Test
             // Then
             response.EnsureSuccessStatusCode();
             await dispatcherMock.Received().Dispatch(Arg.Is<ICommand>(c =>
-                ((UpdateMyTypeCommand)c).Id == 123 && ((UpdateMyTypeCommand)c).Name == "foo"));
+                ((UpdateMyTypeCommand)c).Id == 123 && ((UpdateMyTypeCommand)c).Name == "foo"), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -59,7 +59,7 @@ namespace Themisquo.Test
 
             // Then
             response.EnsureSuccessStatusCode();
-            await dispatcherMock.Received().Dispatch(Arg.Is<ICommand>(c => ((UpdateMyTypeCommand)c).Id == 123));
+            await dispatcherMock.Received().Dispatch(Arg.Is<ICommand>(c => ((UpdateMyTypeCommand)c).Id == 123), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -67,7 +67,7 @@ namespace Themisquo.Test
         {
             // Given
             var dispatcherMock = Substitute.For<IQueryDispatcher>();
-            dispatcherMock.Dispatch(Arg.Any<IQuery<string>>()).Returns("ok");
+            dispatcherMock.Dispatch(Arg.Any<IQuery<string>>(), Arg.Any<CancellationToken>()).Returns("ok");
             await using var app = await StartAppAsync(dispatcherMock, endpoints =>
                 endpoints.MapQuery<GetMyTypeQuery, string>("/mytypes/{id}"));
             using var client = app.GetTestClient();
@@ -77,7 +77,7 @@ namespace Themisquo.Test
 
             // Then
             response.EnsureSuccessStatusCode();
-            await dispatcherMock.Received().Dispatch(Arg.Is<IQuery<string>>(q => ((GetMyTypeQuery)q).Id == 123));
+            await dispatcherMock.Received().Dispatch(Arg.Is<IQuery<string>>(q => ((GetMyTypeQuery)q).Id == 123), Arg.Any<CancellationToken>());
         }
 
         [TestMethod]
@@ -164,7 +164,7 @@ namespace Themisquo.Test
 
         public class NoopUpdateMyTypeCommandHandler : ICommandHandler<UpdateMyTypeCommand>
         {
-            public Task Handle(UpdateMyTypeCommand command, IEventDispatcher eventDispatcher) => Task.CompletedTask;
+            public Task Handle(UpdateMyTypeCommand command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken) => Task.CompletedTask;
         }
 
         public class CreateCardCommand : ICommand
@@ -186,13 +186,13 @@ namespace Themisquo.Test
 
         public class CreateCardCommandHandler : ICommandHandler<CreateCardCommand>
         {
-            public Task Handle(CreateCardCommand command, IEventDispatcher eventDispatcher) =>
-                eventDispatcher.Dispatch(new CardCreatedEvent { ProjectId = command.ProjectId, CardId = command.CardId });
+            public Task Handle(CreateCardCommand command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken) =>
+                eventDispatcher.Dispatch(new CardCreatedEvent { ProjectId = command.ProjectId, CardId = command.CardId }, cancellationToken);
         }
 
         public class NoopCardCreatedObserver : IEventObserver<CardCreatedEvent>
         {
-            public Task Invoke(CardCreatedEvent @event) => Task.CompletedTask;
+            public Task Invoke(CardCreatedEvent @event, CancellationToken cancellationToken) => Task.CompletedTask;
         }
     }
 }
