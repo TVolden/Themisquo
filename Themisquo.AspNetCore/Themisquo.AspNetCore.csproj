@@ -9,7 +9,9 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Title>Themisquo.AspNetCore - ASP.NET Core integration for Themisquo</Title>
     <RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
-    <Authors>Thomas Volden</Authors>
+	<PackageIcon>Themisquo.png</PackageIcon>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
+	  <Authors>Thomas Volden</Authors>
     <Version>0.3.0</Version>
   </PropertyGroup>
 
