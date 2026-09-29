@@ -60,7 +60,7 @@ public class GetCardQueryHandler : IQueryHandler<GetCardQuery, CardDto>
     public async Task<CardDto> Handle(GetCardQuery query, CancellationToken cancellationToken)
     {
         // ... load and map ...
-        return await Task.FromResult(new CardDto());
+        return new CardDto();
     }
 }
 ```
