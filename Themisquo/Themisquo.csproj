@@ -12,7 +12,7 @@
 		<RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 		<Authors>Thomas Volden</Authors>
-		<Version>0.3.0</Version>
+		<Version>0.4.0</Version>
 	</PropertyGroup>
 	
 	<ItemGroup>
@@ -33,6 +33,15 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+	</ItemGroup>
+
+	<!-- Ship the analyzers (e.g. THQ001) inside this package so consumers get them automatically. -->
+	<ItemGroup>
+		<ProjectReference Include="..\Themisquo.Analyzers\Themisquo.Analyzers.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+		<None Include="..\Themisquo.Analyzers\bin\$(Configuration)\netstandard2.0\Themisquo.Analyzers.dll" Visible="false">
+			<Pack>True</Pack>
+			<PackagePath>analyzers\dotnet\cs</PackagePath>
+		</None>
 	</ItemGroup>
 
 </Project>

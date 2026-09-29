@@ -33,24 +33,32 @@ namespace Themisquo
         /// <summary>
         /// Verifies that a corresponding handler can be resolved for every command, query and event among the given
         /// types. Useful when the set of types to check has already been narrowed down by other means than a full
-        /// assembly scan.
+        /// assembly scan. Resolved query handlers are also checked for dependencies that would let them change state
+        /// (<see cref="IDispatcher"/>, <see cref="IEventDispatcher"/> or <see cref="ICommandHandler{TCommand}"/>).
         /// </summary>
         /// <exception cref="MissingHandlersException">Thrown when one or more handlers are missing.</exception>
+        /// <exception cref="QueryHandlerDependencyException">Thrown when one or more query handlers have forbidden dependencies.</exception>
         public static IServiceProvider ValidateHandlersRegistered(this IServiceProvider provider, IEnumerable<Type> types)
         {
             using var scope = provider.CreateScope();
-            var missingHandlers = FindMissingHandlers(scope.ServiceProvider, types);
+            var (missingHandlers, dependencyViolations) = InspectHandlers(scope.ServiceProvider, types);
             if (missingHandlers.Count > 0)
             {
                 throw new MissingHandlersException(missingHandlers);
             }
+            if (dependencyViolations.Count > 0)
+            {
+                throw new QueryHandlerDependencyException(dependencyViolations);
+            }
             return provider;
         }
 
-        private static List<(Type ExpectedType, Type DataType)> FindMissingHandlers(IServiceProvider provider, IEnumerable<Type> types)
+        private static (List<(Type ExpectedType, Type DataType)> MissingHandlers, List<(Type HandlerType, Type DependencyType)> DependencyViolations)
+            InspectHandlers(IServiceProvider provider, IEnumerable<Type> types)
         {
             var queryOpenType = typeof(IQuery<>);
             var missingHandlers = new List<(Type ExpectedType, Type DataType)>();
+            var dependencyViolations = new List<(Type HandlerType, Type DependencyType)>();
 
             foreach (var type in types)
             {
@@ -74,18 +82,28 @@ namespace Themisquo
                 if (queryInterface != null)
                 {
                     var resultType = queryInterface.GetGenericArguments()[0];
-                    AddIfMissing(typeof(IQueryHandler<,>).MakeGenericType(type, resultType), type);
+                    var handler = AddIfMissing(typeof(IQueryHandler<,>).MakeGenericType(type, resultType), type);
+                    if (handler != null)
+                    {
+                        var handlerType = handler.GetType();
+                        dependencyViolations.AddRange(QueryHandlerDependencies.FindForbidden(handlerType)
+                            .Select(dependency => (handlerType, dependency))
+                            .Where(violation => !dependencyViolations.Contains(violation))
+                            .ToList());
+                    }
                 }
             }
 
-            return missingHandlers;
+            return (missingHandlers, dependencyViolations);
 
-            void AddIfMissing(Type expectedHandlerType, Type dataType)
+            object? AddIfMissing(Type expectedHandlerType, Type dataType)
             {
-                if (provider.GetService(expectedHandlerType) is null)
+                var handler = provider.GetService(expectedHandlerType);
+                if (handler is null)
                 {
                     missingHandlers.Add((expectedHandlerType, dataType));
                 }
+                return handler;
             }
         }
     }

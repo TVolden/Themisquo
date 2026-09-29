@@ -37,7 +37,7 @@ namespace Themisquo.FluentValidation
         {
             services.AddScoped<IDispatcher>(sp =>
                 new ValidatingDispatcher(sp.GetRequiredService<Dispatcher>(), sp));
-            services.AddScoped<IQueryDispatcher>(sp => sp.GetRequiredService<IDispatcher>());
+            services.AddScoped<IQueryDispatcher>(sp => new QueryOnlyDispatcher(sp.GetRequiredService<IDispatcher>()));
             return services;
         }
     }
