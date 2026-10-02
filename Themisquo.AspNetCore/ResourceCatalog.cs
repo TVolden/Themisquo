@@ -78,7 +78,58 @@ namespace Themisquo.AspNetCore
             return null;
         }
 
+        /// <summary>
+        /// The resources <paramref name="item"/> refers to: one for each single-item query endpoint of another result
+        /// type whose route's last placeholder matches a property of the item, such as <c>ProjectId</c> for
+        /// <c>/projects/{projectId}</c>.
+        /// </summary>
+        /// <remarks>
+        /// The route's other placeholders are filled from the item's properties of the same name, then from the current
+        /// request's route values. Routes that can't be fully resolved are skipped.
+        /// </remarks>
+        public IReadOnlyList<RelatedResource> GetRelatedResources(Type itemType, object item, HttpRequest request)
+        {
+            var related = new List<RelatedResource>();
+            foreach (var metadata in endpointsByResultType.Value.SelectMany(endpoints => endpoints))
+            {
+                if (metadata.ResultType == itemType || !IsSingleResource(metadata.ResultType))
+                {
+                    continue;
+                }
+
+                var pattern = "/" + metadata.Pattern.TrimStart('/');
+                if (LocationTemplate.GetPlaceholders(pattern).LastOrDefault() is not string lastPlaceholder
+                    || FindProperty(item, lastPlaceholder) is not PropertyInfo idProperty
+                    || idProperty.GetValue(item) is not object id)
+                {
+                    continue;
+                }
+
+                var path = LocationTemplate.TryResolve(pattern, name =>
+                    string.Equals(name, lastPlaceholder, StringComparison.OrdinalIgnoreCase)
+                        ? id
+                        : PropertyValue(item, name) ?? request.RouteValues[name]);
+                if (path is not null)
+                {
+                    related.Add(new RelatedResource(GetTypeName(metadata.ResultType, metadata.QueryType), idProperty.Name, $"{request.PathBase}{path}"));
+                }
+            }
+
+            return related;
+        }
+
+        // A query returning a list or a scalar (such as /cards/{cardId}/title) is not a resource to link to.
+        private static bool IsSingleResource(Type resultType) =>
+            ResourceConventions.GetCollectionElementType(resultType) is null
+            && !resultType.IsPrimitive && !resultType.IsEnum
+            && resultType != typeof(string) && resultType != typeof(decimal) && resultType != typeof(Guid)
+            && resultType != typeof(DateTime) && resultType != typeof(DateTimeOffset) && resultType != typeof(TimeSpan)
+            && resultType != typeof(DateOnly) && resultType != typeof(TimeOnly);
+
+        private static PropertyInfo? FindProperty(object item, string name) =>
+            item.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
         private static object? PropertyValue(object item, string name) =>
-            item.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)?.GetValue(item);
+            FindProperty(item, name)?.GetValue(item);
     }
 }

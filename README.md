@@ -161,6 +161,17 @@ Each placeholder in the item route is filled from, in order:
 
 An item whose route can't be fully resolved gets no link.
 
+A single result, or an item in a list, also links to the resources it refers to. A property matches another resource when it has the same name as the last placeholder of that resource's single-item GET query route. For example, a card's `ProjectId` matches `/projects/{projectId}`. The link's `rel` is the related resource's type name:
+
+```json
+"links": [
+  { "rel": ["self"], "href": "/cards/7" },
+  { "rel": ["project"], "href": "/projects/…" }
+]
+```
+
+The related route's other placeholders are filled from the item's properties of the same name, then from the request's route values. Related routes that can't be fully resolved are skipped. Routes that return the item's own type, a list or a scalar aren't linked.
+
 A scalar result such as a `string` or `bool` is wrapped as `properties.value`.
 
 By default, the class name is the result type's name in camelCase, so `ICard` becomes `iCard` and `CardDto` becomes `cardDto`. The primary id is the result's `Id` property.

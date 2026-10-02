@@ -300,6 +300,99 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
+        public async Task MapQuery_SirenEnabled_SingleResultHasPropertyMatchingRelatedRoute_AddsRelatedLinkButNotToItself()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId, ProjectId = projectId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self", "project" }, LinkRels(root));
+            Assert.AreEqual($"/projects/{projectId}", LinkHref(root, "project"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_ListItemHasPropertyMatchingRelatedRoute_ItemGetsRelatedLink()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<INote>>>(), Arg.Any<CancellationToken>())
+                .Returns(new INote[] { new Note { NoteId = Guid.NewGuid(), ProjectId = projectId } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListNotesQuery, IEnumerable<INote>>("/notes");
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, "/notes");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self" }, LinkRels(root));
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            Assert.AreEqual($"/projects/{projectId}", LinkHref(item, "project"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_RelatedRouteHasOtherPlaceholder_ResolvesItFromRequestRouteValue()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId, ProjectId = projectId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetNoteQuery, INote>("/orgs/{orgId}/notes/{noteId}");
+                endpoints.MapQuery<GetOrgProjectQuery, IProject>("/orgs/{orgId}/projects/{projectId}");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/orgs/acme/notes/{noteId}");
+
+            // Then
+            Assert.AreEqual($"/orgs/acme/projects/{projectId}", LinkHref(root, "project"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_RelatedRouteCannotBeResolved_NoRelatedLink()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId, ProjectId = Guid.NewGuid() });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapQuery<GetOrgProjectQuery, IProject>("/orgs/{orgId}/projects/{projectId}");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self" }, LinkRels(root));
+        }
+
+        [TestMethod]
         public async Task MapQuery_SirenNotEnabled_ReturnsPlainJson()
         {
             // Given
@@ -329,6 +422,14 @@ namespace Themisquo.Test
         private static string? SelfHref(JsonElement entity) =>
             entity.GetProperty("links").EnumerateArray()
                 .Single(l => Strings(l.GetProperty("rel")).Contains("self"))
+                .GetProperty("href").GetString();
+
+        private static string?[] LinkRels(JsonElement entity) =>
+            entity.GetProperty("links").EnumerateArray().SelectMany(l => Strings(l.GetProperty("rel"))).ToArray();
+
+        private static string? LinkHref(JsonElement entity, string rel) =>
+            entity.GetProperty("links").EnumerateArray()
+                .Single(l => Strings(l.GetProperty("rel")).Contains(rel))
                 .GetProperty("href").GetString();
 
         private static string?[] ItemSelfHrefs(JsonElement root) =>
@@ -439,6 +540,45 @@ namespace Themisquo.Test
         {
             public Guid ProjectId { get; set; }
             public int AssignmentId { get; set; }
+        }
+
+        public interface INote
+        {
+            Guid NoteId { get; }
+            Guid ProjectId { get; }
+        }
+
+        public class Note : INote
+        {
+            public Guid NoteId { get; set; }
+            public Guid ProjectId { get; set; }
+        }
+
+        public class GetNoteQuery : IQuery<INote>
+        {
+            public Guid NoteId { get; set; }
+        }
+
+        public class ListNotesQuery : IQuery<IEnumerable<INote>>
+        {
+        }
+
+        public interface IProject
+        {
+            Guid ProjectId { get; }
+        }
+
+        [Resource(Type = "project")]
+        public class GetProjectQuery : IQuery<IProject>
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        [Resource(Type = "project")]
+        public class GetOrgProjectQuery : IQuery<IProject>
+        {
+            public string OrgId { get; set; } = "";
+            public Guid ProjectId { get; set; }
         }
 
         public interface IGadget
