@@ -22,7 +22,7 @@ namespace Themisquo.Test
                 .Returns(new MyType { Id = 123, DisplayName = "foo" });
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
                 endpoints.MapQuery<GetMyTypeQuery, MyType>("/mytypes/{id}"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var response = await client.GetAsync("/mytypes/123?expand=all");
@@ -48,7 +48,7 @@ namespace Themisquo.Test
                 .Returns(new IMyItem[] { new MyItem { Id = 1 }, new MyItem { Id = 2 } });
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
                 endpoints.MapQuery<ListMyItemsQuery, IEnumerable<IMyItem>>("/myitems"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var response = await client.GetAsync("/myitems");
@@ -80,7 +80,7 @@ namespace Themisquo.Test
                 .Returns(new IGadget[] { new Gadget { Id = 1, Key = "a" } });
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
                 endpoints.MapQuery<ListGadgetsQuery, IEnumerable<IGadget>>("/gadgets"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/gadgets");
@@ -100,7 +100,7 @@ namespace Themisquo.Test
                 .Returns(new Gadget { Id = 1, Key = "a" });
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
                 endpoints.MapQuery<GetGadgetQuery, IGadget>("/gadgets/{gadgetKey}"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/gadgets/a");
@@ -121,7 +121,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListUnnamedGadgetsQuery, IEnumerable<IGadget>>("/gadgets");
                 endpoints.MapQuery<GetGadgetQuery, IGadget>("/gadgets/{gadgetKey}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/gadgets");
@@ -144,7 +144,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListUnnamedGadgetsQuery, IEnumerable<IGadget>>("/gadgets");
                 endpoints.MapQuery<GetGadgetQuery, IGadget>("/gadgets/{gadgetKey}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/gadgets");
@@ -165,7 +165,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListMyItemsQuery, IEnumerable<IMyItem>>("/myitems");
                 endpoints.MapQuery<GetMyItemQuery, IMyItem>("/myitems/{myItemId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/myitems");
@@ -186,7 +186,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListMyItemsQuery, IEnumerable<IMyItem>>("/myitems");
                 endpoints.MapQuery<GetMyItemQuery, IMyItem>("/myitems/{myItemId:int}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/myitems");
@@ -208,7 +208,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListProjectCardsQuery, IEnumerable<ICard>>("/projects/{projectId}/cards");
                 endpoints.MapQuery<GetProjectCardQuery, ICard>("/projects/{projectId}/cards/{cardId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/projects/{projectId}/cards");
@@ -230,7 +230,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListAssignmentsQuery, IEnumerable<IAssignment>>("/assignments");
                 endpoints.MapQuery<GetAssignmentQuery, IAssignment>("/projects/{projectId}/assignments/{assignmentId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/assignments");
@@ -251,7 +251,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListCardsQuery, IEnumerable<ICard>>("/cards");
                 endpoints.MapQuery<GetProjectCardQuery, ICard>("/projects/{projectId}/cards/{cardId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/cards");
@@ -270,7 +270,7 @@ namespace Themisquo.Test
                 .Returns(new IWidget[] { new Widget { Id = 5 } });
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
                 endpoints.MapCQEndpoints(typeof(ListWidgetsQuery).Assembly, baseUrl: "/api"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/api/widgets");
@@ -287,7 +287,7 @@ namespace Themisquo.Test
             dispatcherMock.Dispatch(Arg.Any<IQuery<string>>(), Arg.Any<CancellationToken>()).Returns("ok");
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
                 endpoints.MapQuery<GetMyNameQuery, string>("/mynames/{id}"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var response = await client.GetAsync("/mynames/123");
@@ -315,7 +315,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/notes/{noteId}");
@@ -338,7 +338,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListNotesQuery, IEnumerable<INote>>("/notes");
                 endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/notes");
@@ -363,7 +363,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/orgs/{orgId}/notes/{noteId}");
                 endpoints.MapQuery<GetOrgProjectQuery, IProject>("/orgs/{orgId}/projects/{projectId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/orgs/acme/notes/{noteId}");
@@ -385,7 +385,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 endpoints.MapQuery<GetOrgProjectQuery, IProject>("/orgs/{orgId}/projects/{projectId}");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/notes/{noteId}");
@@ -407,7 +407,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/notes/{noteId}?expand=all");
@@ -437,7 +437,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 endpoints.MapCommand<RenameNoteCommand>("/notes/{noteId}", "PATCH");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/notes/{noteId}");
@@ -461,7 +461,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 endpoints.MapCommand<DeleteNoteCommand>("/notes/{id}", "DELETE");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/notes/{noteId}");
@@ -488,7 +488,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<ListProjectNotesQuery, IEnumerable<INote>>("/projects/{projectId}/notes");
                 endpoints.MapCommand<CreateNoteCommand>("/projects/{projectId}/notes");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, $"/projects/{projectId}/notes");
@@ -520,7 +520,7 @@ namespace Themisquo.Test
                 endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
             });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var root = await GetSirenAsync(client, "/notes");
@@ -545,7 +545,7 @@ namespace Themisquo.Test
                     endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                     endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
                 });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
             var noteId = Guid.NewGuid();
 
             // When
@@ -572,7 +572,7 @@ namespace Themisquo.Test
             await using var app = await StartCommandAppAsync(
                 services => { },
                 endpoints => endpoints.MapCommand<AddNoteCommand>("/notes"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
             var noteId = Guid.NewGuid();
 
             // When
@@ -595,7 +595,7 @@ namespace Themisquo.Test
                     endpoints.MapCommand<AddNoteCommand>("/notes");
                     endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
                 });
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
             var noteId = Guid.NewGuid();
 
             // When
@@ -614,7 +614,7 @@ namespace Themisquo.Test
             await using var app = await StartCommandAppAsync(
                 services => services.AddCommandHandler<NoopUpdateNoteCommandHandler, UpdateNoteCommand>(),
                 endpoints => endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var response = await client.PutAsJsonAsync($"/notes/{Guid.NewGuid()}", new { Text = "foo" });
@@ -622,6 +622,110 @@ namespace Themisquo.Test
             // Then
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             Assert.AreEqual("", await response.Content.ReadAsStringAsync());
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_NoAcceptHeader_ReturnsPlainJsonVaryingOnAccept()
+        {
+            // Given
+            var response = await GetMyTypeAsync(sirenAsDefault: false, accept: null);
+
+            // Then
+            Assert.AreEqual("application/json", response.Content.Headers.ContentType?.MediaType);
+            CollectionAssert.Contains(response.Headers.Vary.ToArray(), "Accept");
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabledAsDefault_NoAcceptHeader_ReturnsSiren()
+        {
+            // Given
+            var response = await GetMyTypeAsync(sirenAsDefault: true, accept: null);
+
+            // Then
+            Assert.AreEqual("application/vnd.siren+json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabledAsDefault_AcceptsAnything_ReturnsSiren()
+        {
+            // Given
+            var response = await GetMyTypeAsync(sirenAsDefault: true, accept: "*/*");
+
+            // Then
+            Assert.AreEqual("application/vnd.siren+json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabledAsDefault_AcceptsApplicationJson_ReturnsPlainJson()
+        {
+            // Given
+            var response = await GetMyTypeAsync(sirenAsDefault: true, accept: "application/json");
+
+            // Then
+            Assert.AreEqual("application/json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_AcceptPrefersJsonByQuality_ReturnsPlainJson()
+        {
+            // Given
+            var response = await GetMyTypeAsync(sirenAsDefault: true, accept: "application/vnd.siren+json;q=0.5, application/json");
+
+            // Then
+            Assert.AreEqual("application/json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabledAsDefault_AcceptsUnsupportedType_FallsBackToSiren()
+        {
+            // Given
+            var response = await GetMyTypeAsync(sirenAsDefault: true, accept: "application/xml");
+
+            // Then
+            Assert.AreEqual("application/vnd.siren+json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        [TestMethod]
+        public async Task MapCommand_SirenEnabled_NoAcceptHeader_Returns201WithoutBody()
+        {
+            // Given
+            await using var app = await StartCommandAppAsync(
+                services => services.AddQueryHandler<GetNoteQueryHandler, GetNoteQuery, INote>(),
+                endpoints =>
+                {
+                    endpoints.MapCommand<AddNoteCommand>("/notes");
+                    endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                });
+            using var client = app.GetTestClient();
+            var noteId = Guid.NewGuid();
+
+            // When
+            var response = await client.PostAsJsonAsync("/notes", new { NoteId = noteId });
+
+            // Then
+            Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+            Assert.AreEqual($"/notes/{noteId}", response.Headers.Location?.ToString());
+            Assert.AreEqual("", await response.Content.ReadAsStringAsync());
+        }
+
+        private static async Task<HttpResponseMessage> GetMyTypeAsync(bool sirenAsDefault, string? accept)
+        {
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<MyType>>(), Arg.Any<CancellationToken>())
+                .Returns(new MyType { Id = 123, DisplayName = "foo" });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+                endpoints.MapQuery<GetMyTypeQuery, MyType>("/mytypes/{id}"), sirenAsDefault);
+            using var client = app.GetTestClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/mytypes/123");
+            if (accept is not null)
+            {
+                request.Headers.TryAddWithoutValidation("Accept", accept);
+            }
+
+            var response = await client.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+            await response.Content.LoadIntoBufferAsync();
+            return response;
         }
 
         [TestMethod]
@@ -633,7 +737,7 @@ namespace Themisquo.Test
                 .Returns(new MyType { Id = 123, DisplayName = "foo" });
             await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: false, endpoints =>
                 endpoints.MapQuery<GetMyTypeQuery, MyType>("/mytypes/{id}"));
-            using var client = app.GetTestClient();
+            using var client = SirenClient(app);
 
             // When
             var response = await client.GetAsync("/mytypes/123");
@@ -693,7 +797,14 @@ namespace Themisquo.Test
             return app;
         }
 
-        private static async Task<WebApplication> StartAppAsync(IQueryDispatcher dispatcher, bool sirenEnabled, Action<WebApplication> mapEndpoints)
+        private static HttpClient SirenClient(WebApplication app)
+        {
+            var client = app.GetTestClient();
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.siren+json");
+            return client;
+        }
+
+        private static async Task<WebApplication> StartAppAsync(IQueryDispatcher dispatcher, bool sirenEnabled, Action<WebApplication> mapEndpoints, bool sirenAsDefault = false)
         {
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseTestServer();
@@ -701,7 +812,7 @@ namespace Themisquo.Test
             builder.Services.AddSingleton(Substitute.For<IDispatcher>()); // for command endpoints
             if (sirenEnabled)
             {
-                builder.Services.AddThemisquoSiren();
+                builder.Services.AddThemisquoSiren(asDefault: sirenAsDefault);
             }
 
             var app = builder.Build();

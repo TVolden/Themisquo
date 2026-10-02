@@ -32,6 +32,8 @@ namespace Themisquo.AspNetCore.Siren
             builder = new SirenEntityBuilder(this.jsonOptions, resources);
         }
 
+        public string MediaType => SirenQueryResultWriter.ContentType;
+
         public async Task<IResult> Write<TCommand>(HttpContext context, TCommand command, string? location, CancellationToken cancellationToken)
             where TCommand : ICommand
         {

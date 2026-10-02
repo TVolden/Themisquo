@@ -42,7 +42,7 @@ public static class ThemisquoEndpointExtensions
                 ? null
                 : LocationTemplate.Resolve(locatedEvent.GetType().GetCustomAttribute<LocationAttribute>()!.UrlTemplate, locatedEvent);
 
-            if (context.RequestServices.GetService<ICommandResultWriter>() is { } writer)
+            if (ResultWriterSelection.Select<ICommandResultWriter>(context) is { } writer)
             {
                 return await writer.Write(context, command, location, cancellationToken);
             }
@@ -105,7 +105,7 @@ public static class ThemisquoEndpointExtensions
         endpoints.MapMethods(pattern, [httpMethod], async (HttpContext context, [AsParameters] TQuery query, IQueryDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             var result = await dispatcher.Dispatch(query, cancellationToken);
-            return context.RequestServices.GetService<IQueryResultWriter>()?.Write<TQuery, TResult>(context, query, result)
+            return ResultWriterSelection.Select<IQueryResultWriter>(context)?.Write<TQuery, TResult>(context, query, result)
                 ?? Results.Ok(result);
         }).WithMetadata(new QueryEndpointMetadata(typeof(TQuery), typeof(TResult), pattern, httpMethod));
         return endpoints;

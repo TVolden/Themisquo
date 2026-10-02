@@ -121,11 +121,14 @@ app.MapCQEndpoints(typeof(CreateCardCommand).Assembly, baseUrl: "/api");
 
 ### Hypermedia responses with Siren
 
-Add `Themisquo.AspNetCore.Siren` and opt in with one call. Query endpoints then respond with a [Siren](https://github.com/kevinswiber/siren) document (`application/vnd.siren+json`) instead of plain JSON. The endpoints themselves don't change.
+Add `Themisquo.AspNetCore.Siren` and opt in with one call. Query endpoints can then respond with a [Siren](https://github.com/kevinswiber/siren) document (`application/vnd.siren+json`) instead of plain JSON. The endpoints themselves don't change.
 
 ```csharp
-builder.Services.AddThemisquoSiren();
+builder.Services.AddThemisquoSiren();                  // Siren when the client sends Accept: application/vnd.siren+json
+builder.Services.AddThemisquoSiren(asDefault: true);   // ...and also when Accept is missing, */*, or unsupported
 ```
+
+The response format follows the request's `Accept` header, in order of its `q` preferences. `application/json` always gets plain JSON. A missing `Accept`, a wildcard, or an unsupported type gets the default: plain JSON, or Siren with `asDefault: true`. Responses carry `Vary: Accept`, so caches keep the formats apart.
 
 A single result becomes the entity's `properties`, serialized with the same JSON options as a plain response. Every entity gets a `self` link to the request:
 

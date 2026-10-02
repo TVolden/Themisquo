@@ -22,6 +22,8 @@ namespace Themisquo.AspNetCore.Siren
             builder = new SirenEntityBuilder(this.jsonOptions, resources);
         }
 
+        public string MediaType => ContentType;
+
         public IResult Write<TQuery, TResult>(HttpContext context, TQuery query, TResult result) where TQuery : IQuery<TResult>
         {
             var request = context.Request;
