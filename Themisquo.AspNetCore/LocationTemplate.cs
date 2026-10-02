@@ -1,39 +1,59 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
 namespace Themisquo.AspNetCore
 {
-    internal static class LocationTemplate
+    /// <summary>
+    /// Resolves URL templates such as <c>/projects/{projectId}/cards/{cardId}</c> by filling each placeholder with a
+    /// value. Route constraints and defaults (<c>{id:int}</c>, <c>{id?}</c>) are accepted and dropped.
+    /// </summary>
+    public static class LocationTemplate
     {
-        private static readonly Regex PlaceholderPattern = new(@"\{(\w+)\}", RegexOptions.Compiled);
+        private static readonly Regex PlaceholderPattern = new(@"\{(\w+)[^}]*\}", RegexOptions.Compiled);
 
-        public static string Resolve(string urlTemplate, IEvent @event)
+        /// <summary>The placeholder names in the template, in order of appearance.</summary>
+        public static IReadOnlyList<string> GetPlaceholders(string urlTemplate) =>
+            PlaceholderPattern.Matches(urlTemplate).Select(match => match.Groups[1].Value).ToList();
+
+        /// <summary>
+        /// Fills each placeholder with the value <paramref name="valueFor"/> returns for its name, URL-escaped.
+        /// Returns <c>null</c> when any placeholder has no value.
+        /// </summary>
+        public static string? TryResolve(string urlTemplate, Func<string, object?> valueFor)
+        {
+            var resolved = true;
+            var url = PlaceholderPattern.Replace(urlTemplate, match =>
+            {
+                var value = valueFor(match.Groups[1].Value);
+                if (value is null)
+                {
+                    resolved = false;
+                    return "";
+                }
+
+                return Uri.EscapeDataString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "");
+            });
+            return resolved ? url : null;
+        }
+
+        internal static string Resolve(string urlTemplate, IEvent @event)
         {
             var eventType = @event.GetType();
-            return PlaceholderPattern.Replace(urlTemplate, match =>
+            return TryResolve(urlTemplate, propertyName =>
             {
-                var propertyName = match.Groups[1].Value;
                 var property = FindProperty(eventType, propertyName)
                     ?? throw new InvalidOperationException(
                         $"Location template '{urlTemplate}' on event '{eventType.Name}' references placeholder '{{{propertyName}}}', which has no matching public property.");
-                var value = property.GetValue(@event);
-                return Uri.EscapeDataString(value?.ToString() ?? "");
-            });
+                return property.GetValue(@event) ?? "";
+            })!;
         }
 
-        public static IEnumerable<string> GetUnresolvedPlaceholders(string urlTemplate, Type eventType)
-        {
-            foreach (Match match in PlaceholderPattern.Matches(urlTemplate))
-            {
-                var propertyName = match.Groups[1].Value;
-                if (FindProperty(eventType, propertyName) is null)
-                {
-                    yield return propertyName;
-                }
-            }
-        }
+        internal static IEnumerable<string> GetUnresolvedPlaceholders(string urlTemplate, Type eventType) =>
+            GetPlaceholders(urlTemplate).Where(propertyName => FindProperty(eventType, propertyName) is null);
 
         private static PropertyInfo? FindProperty(Type eventType, string propertyName) =>
             eventType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);

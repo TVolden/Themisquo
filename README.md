@@ -137,7 +137,44 @@ A single result becomes the entity's `properties`, serialized with the same JSON
 }
 ```
 
-A list result becomes a `collection` with one `item` sub-entity per element. A scalar result such as a `string` or `bool` is wrapped as `properties.value`. The class name is the result type's name in camelCase, without the leading `I` of an interface, so `ICard` becomes `card`.
+A list result becomes a `collection` with one `item` sub-entity per element. If a GET query endpoint returns a single result of the list's element type, each item gets a `self` link to it. For example, a list of `ICard` mapped next to `app.MapQuery<GetCardQuery, ICard>("/projects/{projectId}/cards/{cardId}")`, where `GetCardQuery` is marked `[Resource(Type = "card")]` (see below):
+
+```json
+{
+  "class": ["card", "collection"],
+  "entities": [
+    {
+      "rel": ["item"],
+      "class": ["card"],
+      "properties": { "id": 7, "title": "New card" },
+      "links": [{ "rel": ["self"], "href": "/projects/…/cards/7" }]
+    }
+  ],
+  "links": [{ "rel": ["self"], "href": "/projects/…/cards" }]
+}
+```
+
+Each placeholder in the item route is filled from, in order:
+1. the item's property of the same name, so `{projectId}` uses `ProjectId`;
+2. the item's primary id, for the route's last placeholder only, so `{cardId}` uses `Id`;
+3. the current request's route values, so a list at `/projects/{projectId}/cards` passes its `projectId` on.
+
+An item whose route can't be fully resolved gets no link.
+
+A scalar result such as a `string` or `bool` is wrapped as `properties.value`.
+
+By default, the class name is the result type's name in camelCase, so `ICard` becomes `iCard` and `CardDto` becomes `cardDto`. The primary id is the result's `Id` property.
+
+Both can be set with `[Resource]` from `Themisquo.AspNetCore`. It goes on the query, so your domain types stay free of web dependencies. It isn't Siren-specific either: other hypermedia formats can use the same names and ids.
+
+```csharp
+[Endpoint("/projects/{projectId}/cards/{cardId}")]
+[Resource(Type = "card", Id = nameof(ICard.CardId))]
+public record GetCardQuery(Guid ProjectId, Guid CardId) : IQuery<ICard>;
+```
+
+* **`Type`** names the result, or the elements of a list query. A list query without it takes the name from a single-item query for the same type, so annotating `GetCardQuery` is enough.
+* **`Id`** names the result property that fills the last placeholder of the query's route when an item links to it. Here `{cardId}` comes from `ICard.CardId`.
 
 ## Setting up DI and registering handlers
 

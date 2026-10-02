@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Themisquo.AspNetCore.Siren
 {
@@ -10,6 +11,7 @@ namespace Themisquo.AspNetCore.Siren
         /// </summary>
         public static IServiceCollection AddThemisquoSiren(this IServiceCollection services)
         {
+            services.TryAddSingleton<ResourceCatalog>();
             services.AddSingleton<IQueryResultWriter, SirenQueryResultWriter>();
             return services;
         }

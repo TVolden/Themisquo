@@ -93,7 +93,7 @@ public static class ThemisquoEndpointExtensions
             var result = await dispatcher.Dispatch(query, cancellationToken);
             return context.RequestServices.GetService<IQueryResultWriter>()?.Write<TQuery, TResult>(context, query, result)
                 ?? Results.Ok(result);
-        });
+        }).WithMetadata(new QueryEndpointMetadata(typeof(TQuery), typeof(TResult), pattern, httpMethod));
         return endpoints;
     }
     public static IEndpointRouteBuilder MapQuery(
