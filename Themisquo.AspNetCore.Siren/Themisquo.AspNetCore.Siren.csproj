@@ -4,15 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Themisquo.AspNetCore</PackageId>
-    <RootNamespace>Themisquo.AspNetCore</RootNamespace>
+    <PackageId>Themisquo.AspNetCore.Siren</PackageId>
+    <RootNamespace>Themisquo.AspNetCore.Siren</RootNamespace>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <Title>Themisquo.AspNetCore - ASP.NET Core integration for Themisquo</Title>
+    <Title>Themisquo.AspNetCore.Siren - Siren hypermedia responses for Themisquo endpoints</Title>
     <RepositoryUrl>https://github.com/TVolden/Themisquo</RepositoryUrl>
 	<PackageIcon>Themisquo.png</PackageIcon>
 	<PackageReadmeFile>README.md</PackageReadmeFile>
 	  <Authors>Thomas Volden</Authors>
-    <Version>0.4.0</Version>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
 	<ItemGroup>
@@ -35,11 +35,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="11.11.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Themisquo\Themisquo.csproj" />
+    <ProjectReference Include="..\Themisquo.AspNetCore\Themisquo.AspNetCore.csproj" />
   </ItemGroup>
 
 </Project>

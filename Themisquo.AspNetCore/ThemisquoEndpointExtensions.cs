@@ -88,10 +88,11 @@ public static class ThemisquoEndpointExtensions
         string httpMethod = "GET")
         where TQuery : IQuery<TResult>
     {
-        endpoints.MapMethods(pattern, [httpMethod], async ([AsParameters] TQuery query, IQueryDispatcher dispatcher, CancellationToken cancellationToken) =>
+        endpoints.MapMethods(pattern, [httpMethod], async (HttpContext context, [AsParameters] TQuery query, IQueryDispatcher dispatcher, CancellationToken cancellationToken) =>
         {
             var result = await dispatcher.Dispatch(query, cancellationToken);
-            return Results.Ok(result);
+            return context.RequestServices.GetService<IQueryResultWriter>()?.Write<TQuery, TResult>(context, query, result)
+                ?? Results.Ok(result);
         });
         return endpoints;
     }

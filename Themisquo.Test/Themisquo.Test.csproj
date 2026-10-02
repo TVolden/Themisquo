@@ -29,6 +29,7 @@
     <ProjectReference Include="..\Themisquo.Analyzers\Themisquo.Analyzers.csproj" />
     <ProjectReference Include="..\Themisquo.AspNetCore\Themisquo.AspNetCore.csproj" />
     <ProjectReference Include="..\Themisquo.FluentValidation\Themisquo.FluentValidation.csproj" />
+    <ProjectReference Include="..\Themisquo.AspNetCore.Siren\Themisquo.AspNetCore.Siren.csproj" />
   </ItemGroup>
 
 </Project>

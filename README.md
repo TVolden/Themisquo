@@ -22,6 +22,7 @@ With Themisquo you separate commands and queries into plain conceptual definitio
 |---|---|
 | `Themisquo` | Core abstractions: `ICommand`, `IQuery<T>`, handlers, dispatcher, event dispatcher/observer, DI registration helpers, and the CQRS analyzers. |
 | `Themisquo.AspNetCore` | Maps commands/queries to minimal API endpoints, plus a `ThemisquoExceptionHandler` that turns exceptions into `ProblemDetails`. |
+| `Themisquo.AspNetCore.Siren` | Opt-in [Siren](https://github.com/kevinswiber/siren) hypermedia responses for query endpoints. |
 | `Themisquo.FluentValidation` | Wires up FluentValidation validators for commands/queries and a validating dispatcher decorator. |
 
 ## Getting started
@@ -117,6 +118,26 @@ public record CreateCardCommand(Guid ProjectId, string Title) : ICommand
 
 app.MapCQEndpoints(typeof(CreateCardCommand).Assembly, baseUrl: "/api");
 ```
+
+### Hypermedia responses with Siren
+
+Add `Themisquo.AspNetCore.Siren` and opt in with one call. Query endpoints then respond with a [Siren](https://github.com/kevinswiber/siren) document (`application/vnd.siren+json`) instead of plain JSON. The endpoints themselves don't change.
+
+```csharp
+builder.Services.AddThemisquoSiren();
+```
+
+A single result becomes the entity's `properties`, serialized with the same JSON options as a plain response. Every entity gets a `self` link to the request:
+
+```json
+{
+  "class": ["cardDto"],
+  "properties": { "cardId": "…", "title": "New card" },
+  "links": [{ "rel": ["self"], "href": "/cards/…" }]
+}
+```
+
+A list result becomes a `collection` with one `item` sub-entity per element. A scalar result such as a `string` or `bool` is wrapped as `properties.value`. The class name is the result type's name in camelCase, without the leading `I` of an interface, so `ICard` becomes `card`.
 
 ## Setting up DI and registering handlers
 
