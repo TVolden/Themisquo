@@ -102,12 +102,17 @@ namespace Themisquo.AspNetCore
         /// <param name="path">The resource's resolved path, including the request's path base.</param>
         public IReadOnlyList<ResourceAction> GetActions(string routePattern, string path) =>
             commandsByRouteShape.Value[RouteShape(routePattern)]
-                .Select(metadata => new ResourceAction(
-                    ResourceConventions.GetDefaultTypeName(metadata.CommandType),
-                    metadata.HttpMethod,
-                    path,
-                    metadata.CommandType,
-                    BodyFields(metadata.CommandType, LocationTemplate.GetPlaceholders(metadata.Pattern))))
+                .Select(metadata =>
+                {
+                    var action = ResourceConventions.GetAction(metadata.CommandType);
+                    return new ResourceAction(
+                        action?.Name ?? ResourceConventions.GetDefaultTypeName(metadata.CommandType),
+                        metadata.HttpMethod,
+                        path,
+                        metadata.CommandType,
+                        BodyFields(metadata.CommandType, LocationTemplate.GetPlaceholders(metadata.Pattern)),
+                        action?.Title);
+                })
                 .ToList();
 
         // The properties the request body can bind: writable, or set through a constructor parameter (positional

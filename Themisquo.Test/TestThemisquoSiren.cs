@@ -416,9 +416,34 @@ namespace Themisquo.Test
             Assert.AreEqual("PUT", action.GetProperty("method").GetString());
             Assert.AreEqual($"/notes/{noteId}", action.GetProperty("href").GetString());
             Assert.AreEqual("application/json", action.GetProperty("type").GetString());
+            Assert.IsFalse(action.TryGetProperty("title", out _));
             var field = action.GetProperty("fields").EnumerateArray().Single();
             Assert.AreEqual("text", field.GetProperty("name").GetString());
             Assert.AreEqual("text", field.GetProperty("type").GetString());
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_CommandHasActionAttribute_ActionUsesItsNameAndTitle()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapCommand<RenameNoteCommand>("/notes/{noteId}", "PATCH");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            var action = root.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("rename", action.GetProperty("name").GetString());
+            Assert.AreEqual("Rename note", action.GetProperty("title").GetString());
         }
 
         [TestMethod]
@@ -688,6 +713,14 @@ namespace Themisquo.Test
             public Guid Instance { get; } = Guid.NewGuid();
             public Guid NoteId { get; set; }
             public string Text { get; set; } = "";
+        }
+
+        [Action(Name = "rename", Title = "Rename note")]
+        public class RenameNoteCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid NoteId { get; set; }
+            public string Title { get; set; } = "";
         }
 
         public class DeleteNoteCommand : ICommand

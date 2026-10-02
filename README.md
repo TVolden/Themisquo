@@ -194,7 +194,14 @@ app.MapCommand<RenameCardCommand>("/cards/{cardId}", "PUT"); // RenameCardComman
 ]
 ```
 
-The action's name is the command type's name in camelCase. Its fields are the command properties the request body can set, which leaves out properties bound from the route. Each field's type is an HTML input type:
+The action's name is the command type's name in camelCase. To set a different name, or to add a title, put `[Action]` from `Themisquo.AspNetCore` on the command:
+
+```csharp
+[Action(Name = "rename", Title = "Rename card")]
+public record RenameCardCommand(Guid CardId, string Title) : ICommand { /* ... */ }
+```
+
+Its fields are the command properties the request body can set, which leaves out properties bound from the route. Each field's type is an HTML input type:
 * `number` for numeric properties;
 * `checkbox` for `bool`;
 * `date`, `time` or `datetime-local` for dates and times;

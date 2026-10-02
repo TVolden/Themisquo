@@ -13,6 +13,10 @@ namespace Themisquo.AspNetCore
         public static ResourceAttribute? GetResource(Type queryType) =>
             queryType.GetCustomAttribute<ResourceAttribute>();
 
+        /// <summary>The <see cref="ActionAttribute"/> on the command type, if any.</summary>
+        public static ActionAttribute? GetAction(Type commandType) =>
+            commandType.GetCustomAttribute<ActionAttribute>();
+
         /// <summary>
         /// The type name in camelCase without generic arity, so <c>ICard</c> becomes <c>iCard</c> and <c>CardDto</c>
         /// becomes <c>cardDto</c>. Used when no <see cref="ResourceAttribute.Type"/> applies.

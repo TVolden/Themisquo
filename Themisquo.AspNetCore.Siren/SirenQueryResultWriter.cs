@@ -89,8 +89,8 @@ namespace Themisquo.AspNetCore.Siren
                         .Select(field => new SirenField(jsonOptions.PropertyNamingPolicy?.ConvertName(field.Name) ?? field.Name, InputType(field.Type)))
                         .ToArray();
                     return fields.Length > 0
-                        ? new SirenAction(action.Name, action.HttpMethod, action.Path, "application/json", fields)
-                        : new SirenAction(action.Name, action.HttpMethod, action.Path, null, null);
+                        ? new SirenAction(action.Name, action.HttpMethod, action.Path, "application/json", fields, action.Title)
+                        : new SirenAction(action.Name, action.HttpMethod, action.Path, null, null, action.Title);
                 })
                 .ToArray();
             return actions.Length > 0 ? actions : null;

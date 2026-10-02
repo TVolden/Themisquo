@@ -31,7 +31,8 @@ namespace Themisquo.AspNetCore.Siren
         [property: JsonPropertyName("method")] string Method,
         [property: JsonPropertyName("href")] string Href,
         [property: JsonPropertyName("type"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type,
-        [property: JsonPropertyName("fields"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SirenField[]? Fields);
+        [property: JsonPropertyName("fields"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SirenField[]? Fields,
+        [property: JsonPropertyName("title"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Title = null);
 
     /// <summary>An input field of a <see cref="SirenAction"/>; <see cref="Type"/> is an HTML input type.</summary>
     public record SirenField(
