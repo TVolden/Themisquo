@@ -18,6 +18,21 @@ namespace Themisquo.AspNetCore
             commandType.GetCustomAttribute<ActionAttribute>();
 
         /// <summary>
+        /// The actions declared on the query type: its <see cref="ItemActionAttribute"/>s when
+        /// <paramref name="forItems"/> is <c>true</c>, else its <see cref="ResourceActionAttribute"/>s.
+        /// </summary>
+        public static IReadOnlyList<DeclaredActionAttribute> GetDeclaredActions(Type queryType, bool forItems) =>
+            forItems
+                ? queryType.GetCustomAttributes<ItemActionAttribute>().ToList<DeclaredActionAttribute>()
+                : queryType.GetCustomAttributes<ResourceActionAttribute>().ToList<DeclaredActionAttribute>();
+
+        /// <summary>The <c>TResult</c> of the query type's <see cref="IQuery{TResult}"/>, or <c>null</c> if it isn't a query.</summary>
+        public static Type? GetQueryResultType(Type queryType) =>
+            queryType.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IQuery<>))
+                ?.GetGenericArguments()[0];
+
+        /// <summary>
         /// The type name in camelCase without generic arity, so <c>ICard</c> becomes <c>iCard</c> and <c>CardDto</c>
         /// becomes <c>cardDto</c>. Used when no <see cref="ResourceAttribute.Type"/> applies.
         /// </summary>

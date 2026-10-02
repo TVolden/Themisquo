@@ -534,6 +534,145 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
+        public async Task MapQuery_SirenEnabled_AutoItemActionsOffWithDeclaredItemActions_ItemsGetOnlyDeclaredActions()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var collectionId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<ICard>>>(), Arg.Any<CancellationToken>())
+                .Returns(new ICard[] { new Card { Id = 7 } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListCollectionCardsQuery, IEnumerable<ICard>>("/projects/{projectId}/collections/{collectionId}/cards");
+                endpoints.MapQuery<GetProjectCardQuery, ICard>("/projects/{projectId}/cards/{cardId}");
+                endpoints.MapCommand<DeleteCardCommand>("/projects/{projectId}/cards/{cardId}", "DELETE");
+                endpoints.MapCommand<RemoveCardFromCollectionCommand>("/projects/{projectId}/collections/{collectionId}/cards/{cardId}", "DELETE");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/projects/{projectId}/collections/{collectionId}/cards");
+
+            // Then
+            Assert.IsFalse(root.TryGetProperty("actions", out _));
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            Assert.AreEqual($"/projects/{projectId}/cards/7", SelfHref(item));
+            var actions = item.GetProperty("actions").EnumerateArray().ToDictionary(a => a.GetProperty("name").GetString()!);
+            CollectionAssert.AreEquivalent(new[] { "removeCard", "print" }, actions.Keys.ToArray());
+
+            var remove = actions["removeCard"];
+            Assert.AreEqual("DELETE", remove.GetProperty("method").GetString());
+            Assert.AreEqual($"/projects/{projectId}/collections/{collectionId}/cards/7", remove.GetProperty("href").GetString());
+            Assert.IsFalse(remove.TryGetProperty("fields", out _));
+
+            var print = actions["print"];
+            Assert.AreEqual("POST", print.GetProperty("method").GetString());
+            Assert.AreEqual("https://print.example/cards/7", print.GetProperty("href").GetString());
+            Assert.AreEqual("Print card", print.GetProperty("title").GetString());
+            Assert.AreEqual("application/json", print.GetProperty("type").GetString());
+            var field = print.GetProperty("fields").EnumerateArray().Single();
+            Assert.AreEqual("copies", field.GetProperty("name").GetString());
+            Assert.AreEqual("text", field.GetProperty("type").GetString());
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_DeclaredItemActionIsAlsoAutomatic_ItemGetsItOnce()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<ICard>>>(), Arg.Any<CancellationToken>())
+                .Returns(new ICard[] { new Card { Id = 7 } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListProjectCardsWithDeleteQuery, IEnumerable<ICard>>("/projects/{projectId}/cards");
+                endpoints.MapQuery<GetProjectCardQuery, ICard>("/projects/{projectId}/cards/{cardId}");
+                endpoints.MapCommand<DeleteCardCommand>("/projects/{projectId}/cards/{cardId}", "DELETE");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/projects/{projectId}/cards");
+
+            // Then
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            var action = item.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("deleteCardCommand", action.GetProperty("name").GetString());
+            Assert.AreEqual($"/projects/{projectId}/cards/7", action.GetProperty("href").GetString());
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_ContextAndDeclaredResourceActions_AddedAfterAutomaticActions()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetArchivableNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
+                endpoints.MapCommand<ArchiveNoteCommand>("/archive/{noteId}");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            var actions = root.GetProperty("actions").EnumerateArray().ToArray();
+            CollectionAssert.AreEqual(new[] { "updateNoteCommand", "archiveNoteCommand", "pdf" },
+                actions.Select(a => a.GetProperty("name").GetString()).ToArray());
+            Assert.AreEqual($"/archive/{noteId}", actions[1].GetProperty("href").GetString());
+            Assert.AreEqual("POST", actions[1].GetProperty("method").GetString());
+            Assert.AreEqual($"/notes/{noteId}/pdf", actions[2].GetProperty("href").GetString());
+            Assert.AreEqual("GET", actions[2].GetProperty("method").GetString());
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_AutoActionsOffWithoutDeclaredActions_NoActions()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetReadOnlyNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            Assert.IsFalse(root.TryGetProperty("actions", out _));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_DeclaredActionCannotBeResolved_IsLeftOut()
+        {
+            // Given
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<ICard>>>(), Arg.Any<CancellationToken>())
+                .Returns(new ICard[] { new Card { Id = 7 } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+                endpoints.MapQuery<ListCardsWithUnresolvableActionQuery, IEnumerable<ICard>>("/cards"));
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, "/cards");
+
+            // Then
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            Assert.IsFalse(item.TryGetProperty("actions", out _));
+        }
+
+        [TestMethod]
         public async Task MapCommand_SirenEnabled_LocationMatchesQueryRoute_Returns201WithCreatedSirenEntity()
         {
             // Given
@@ -881,6 +1020,42 @@ namespace Themisquo.Test
             public int CardId { get; set; }
         }
 
+        [Resource(AutoItemActions = false)]
+        [ItemAction<RemoveCardFromCollectionCommand>]
+        [ItemAction("print", "POST", "https://print.example/cards/{cardId}", Title = "Print card", Fields = ["copies"])]
+        public class ListCollectionCardsQuery : IQuery<IEnumerable<ICard>>
+        {
+            public Guid ProjectId { get; set; }
+            public Guid CollectionId { get; set; }
+        }
+
+        [ItemAction<DeleteCardCommand>]
+        public class ListProjectCardsWithDeleteQuery : IQuery<IEnumerable<ICard>>
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        [ItemAction("archive", "POST", "/archive/{folderId}/{cardId}")]
+        public class ListCardsWithUnresolvableActionQuery : IQuery<IEnumerable<ICard>>
+        {
+        }
+
+        public class DeleteCardCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid ProjectId { get; set; }
+            public int CardId { get; set; }
+        }
+
+        [Action(Name = "removeCard")]
+        public class RemoveCardFromCollectionCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid ProjectId { get; set; }
+            public Guid CollectionId { get; set; }
+            public int CardId { get; set; }
+        }
+
         public interface IAssignment
         {
             int Id { get; }
@@ -917,6 +1092,26 @@ namespace Themisquo.Test
 
         public class GetNoteQuery : IQuery<INote>
         {
+            public Guid NoteId { get; set; }
+        }
+
+        [Resource(Context = "archivable")]
+        [ResourceAction("pdf", "get", "/notes/{noteId}/pdf")]
+        public class GetArchivableNoteQuery : IQuery<INote>
+        {
+            public Guid NoteId { get; set; }
+        }
+
+        [Resource(AutoActions = false)]
+        public class GetReadOnlyNoteQuery : IQuery<INote>
+        {
+            public Guid NoteId { get; set; }
+        }
+
+        [Action(Context = "archivable")]
+        public class ArchiveNoteCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
             public Guid NoteId { get; set; }
         }
 

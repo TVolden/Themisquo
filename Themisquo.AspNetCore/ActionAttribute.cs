@@ -16,5 +16,11 @@ namespace Themisquo.AspNetCore
 
         /// <summary>A human-readable title for the action.</summary>
         public string? Title { get; set; }
+
+        /// <summary>
+        /// Adds the command as an action to every query whose <see cref="ResourceAttribute.Context"/> or
+        /// <see cref="ResourceAttribute.ItemContext"/> matches.
+        /// </summary>
+        public string? Context { get; set; }
     }
 }

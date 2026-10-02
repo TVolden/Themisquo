@@ -24,5 +24,28 @@ namespace Themisquo.AspNetCore
         /// placeholder when linking to the resource. Without it, the result's <c>Id</c> property is used.
         /// </summary>
         public string? Id { get; set; }
+
+        /// <summary>
+        /// Adds the commands whose <see cref="ActionAttribute.Context"/> matches as actions on the entity the query
+        /// returns; for a list query, on the collection.
+        /// </summary>
+        public string? Context { get; set; }
+
+        /// <summary>
+        /// Adds the commands whose <see cref="ActionAttribute.Context"/> matches as actions on each item of a list query.
+        /// </summary>
+        public string? ItemContext { get; set; }
+
+        /// <summary>
+        /// Whether the commands mapped on the entity's route become its actions. Set it to <c>false</c> to get only the
+        /// declared actions, or none. Defaults to <c>true</c>.
+        /// </summary>
+        public bool AutoActions { get; set; } = true;
+
+        /// <summary>
+        /// Whether the commands mapped on each list item's route become its actions. Set it to <c>false</c> to get only
+        /// the declared item actions, or none. Defaults to <c>true</c>.
+        /// </summary>
+        public bool AutoItemActions { get; set; } = true;
     }
 }

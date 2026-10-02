@@ -175,7 +175,7 @@ A single result, or an item in a list, also links to the resources it refers to.
 
 The related route's other placeholders are filled from the item's properties of the same name, then from the request's route values. Related routes that can't be fully resolved are skipped. Routes that return the item's own type, a list or a scalar aren't linked.
 
-Commands mapped on the same route as an entity become its Siren `actions`. Routes match by shape, so placeholder names don't matter: `DELETE /cards/{id}` acts on `GET /cards/{cardId}`. This applies to:
+Commands mapped on the same route as an entity become its Siren `actions`, unless switched off (see [Declaring actions](#declaring-actions)). Routes match by shape, so placeholder names don't matter: `DELETE /cards/{id}` acts on `GET /cards/{cardId}`. This applies to:
 * a single result;
 * a list, so a create command on the list route appears on the collection;
 * each item in a list, at the item's own route.
@@ -233,6 +233,48 @@ public record GetCardQuery(Guid ProjectId, Guid CardId) : IQuery<ICard>;
 
 * **`Type`** names the result, or the elements of a list query. A list query without it takes the name from a single-item query for the same type, so annotating `GetCardQuery` is enough.
 * **`Id`** names the result property that fills the last placeholder of the query's route when an item links to it. Here `{cardId}` comes from `ICard.CardId`.
+
+#### Declaring actions
+
+Automatic actions only come from commands on the entity's own route. For example, the cards in a collection get the card's own `update` and `delete`, but not "remove from this collection", which lives on another route. You can declare actions on the query instead. Each form comes in two versions:
+* **`Resource…`** targets the entity the query returns. For a list query, that's the collection.
+* **`Item…`** targets each item of a list query.
+
+| | Entity (`Resource…`) | Items of a list (`Item…`) |
+|---|---|---|
+| A mapped command | `[ResourceAction<TCommand>]` | `[ItemAction<TCommand>]` |
+| An external URL | `[ResourceAction("name", "METHOD", "url template")]` | `[ItemAction("name", "METHOD", "url template")]` |
+| Commands by context | `[Resource(Context = "…")]` | `[Resource(ItemContext = "…")]` |
+| Switch off automatic actions | `[Resource(AutoActions = false)]` | `[Resource(AutoItemActions = false)]` |
+
+```csharp
+[Endpoint("/projects/{projectId}/collections/{collectionId}/cards")]
+[Resource(AutoItemActions = false)]                       // no update/delete of the card itself here
+[ItemAction<RemoveCardFromCollectionCommand>]
+[ItemAction("print", "POST", "https://print.example/cards/{cardId}", Title = "Print card")]
+public record GetCollectionCards(Guid ProjectId, Guid CollectionId) : IQuery<IEnumerable<ICard>>;
+```
+
+* **A mapped command** uses its endpoint's route and method. Its name, title and fields come from the command, as for automatic actions. A `Title` on the declaration replaces the command's title.
+* **An external action** can point to another service. A relative URL gets the request's path base in front; an absolute `http(s)` URL is used as is. Its optional `Fields` are sent as `text`.
+* **A context** adds every mapped command marked with a matching `[Action(Context = "…")]`.
+
+The automatic actions come first, then the declared commands, the commands by context, and the external actions. A command appears once. With the automatic actions switched off and nothing declared, the entity or items get no actions.
+
+Placeholders are filled the same way as for links: from the entity's or item's property of the same name, then its primary id for the last placeholder only, then the request's route values. An action that can't be fully resolved is left out.
+
+Check the declarations at startup, after mapping the endpoints:
+
+```csharp
+app.MapCQEndpoints(typeof(GetCollectionCards).Assembly);
+app.ValidateResourceActions(); // throws InvalidResourceActionException
+```
+
+It throws when:
+* a declared command isn't mapped as an endpoint, or sets `Fields`;
+* a `Context` or `ItemContext` matches no mapped command;
+* an `Item…` attribute, `ItemContext` or `AutoItemActions` is on a query that doesn't return a list;
+* an external action's method isn't an HTTP method.
 
 ## Setting up DI and registering handlers
 

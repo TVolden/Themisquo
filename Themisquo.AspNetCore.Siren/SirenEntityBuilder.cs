@@ -11,40 +11,44 @@ namespace Themisquo.AspNetCore.Siren
     /// <c>properties.value</c>. Every entity gets a <c>self</c> link, and each collection item gets a <c>self</c> link to
     /// the GET query route that returns a single item of the collection's element type, when one is mapped. A single
     /// result or item also links to the resources it refers to (see <see cref="ResourceCatalog.GetRelatedResources"/>),
-    /// with the related resource's type name as the link's <c>rel</c>. Commands mapped on an entity's route become its
-    /// <c>actions</c> (see <see cref="ResourceCatalog.GetActions"/>).
+    /// with the related resource's type name as the link's <c>rel</c>. Commands mapped on an entity's route, and the
+    /// actions declared on its query, become its <c>actions</c> (see <see cref="ResourceCatalog.GetActions(Type, bool, ResourceRoute, object, Microsoft.AspNetCore.Http.HttpRequest)"/>).
     /// </summary>
     internal class SirenEntityBuilder(JsonSerializerOptions jsonOptions, ResourceCatalog resources)
     {
         /// <param name="self">The entity's <c>self</c> link.</param>
-        /// <param name="routePattern">The route pattern the entity is served at, to find its actions; <c>null</c> for none.</param>
+        /// <param name="routePattern">The route pattern the entity is served at, to find the commands mapped on it; <c>null</c> for none.</param>
         /// <param name="path">The entity's path, including the path base, for its actions' <c>href</c>.</param>
         public SirenEntity Build(Type queryType, Type resultType, object? result, HttpRequest request, string self, string? routePattern, string path)
         {
             SirenLink selfLink = new(["self"], self);
-            var actions = routePattern is not null ? Actions(routePattern, path) : null;
+            var route = routePattern is not null ? new ResourceRoute(routePattern, path) : null;
 
             if (result is null)
             {
-                return new SirenEntity([resources.GetTypeName(resultType, queryType)], null, null, [selfLink], actions);
+                return new SirenEntity([resources.GetTypeName(resultType, queryType)], null, null, [selfLink],
+                    Actions(queryType, forItems: false, route, null, request));
             }
 
             if (ResourceConventions.GetCollectionElementType(resultType) is Type elementType)
             {
                 var className = resources.GetTypeName(elementType, queryType);
                 var entities = ((IEnumerable)result).Cast<object?>()
-                    .Select(item => ItemEntity(className, elementType, item, request))
+                    .Select(item => ItemEntity(queryType, className, elementType, item, request))
                     .ToArray();
-                return new SirenEntity([className, "collection"], null, entities, [selfLink], actions);
+                return new SirenEntity([className, "collection"], null, entities, [selfLink],
+                    Actions(queryType, forItems: false, route, null, request));
             }
 
             var node = JsonSerializer.SerializeToNode(result, resultType, jsonOptions);
             return node is JsonObject properties
-                ? new SirenEntity([resources.GetTypeName(resultType, queryType)], properties, null, [selfLink, .. RelatedLinks(resultType, result, request)], actions)
-                : new SirenEntity(null, new JsonObject { ["value"] = node }, null, [selfLink], actions);
+                ? new SirenEntity([resources.GetTypeName(resultType, queryType)], properties, null, [selfLink, .. RelatedLinks(resultType, result, request)],
+                    Actions(queryType, forItems: false, route, result, request))
+                : new SirenEntity(null, new JsonObject { ["value"] = node }, null, [selfLink],
+                    Actions(queryType, forItems: false, route, null, request));
         }
 
-        private SirenSubEntity ItemEntity(string className, Type itemType, object? item, HttpRequest request)
+        private SirenSubEntity ItemEntity(Type listQueryType, string className, Type itemType, object? item, HttpRequest request)
         {
             if (item is null)
             {
@@ -57,15 +61,15 @@ namespace Themisquo.AspNetCore.Siren
                 : [.. RelatedLinks(itemType, item, request)];
             return new SirenSubEntity(["item"], [className], Properties(item, itemType), null,
                 links.Length > 0 ? links : null,
-                route is not null ? Actions(route.Pattern, route.Path) : null);
+                Actions(listQueryType, forItems: true, route, item, request));
         }
 
         private IEnumerable<SirenLink> RelatedLinks(Type itemType, object item, HttpRequest request) =>
             resources.GetRelatedResources(itemType, item, request).Select(related => new SirenLink([related.TypeName], related.Path));
 
-        private SirenAction[]? Actions(string routePattern, string path)
+        private SirenAction[]? Actions(Type queryType, bool forItems, ResourceRoute? route, object? target, HttpRequest request)
         {
-            var actions = resources.GetActions(routePattern, path)
+            var actions = resources.GetActions(queryType, forItems, route, target, request)
                 .Select(action =>
                 {
                     var fields = action.Fields

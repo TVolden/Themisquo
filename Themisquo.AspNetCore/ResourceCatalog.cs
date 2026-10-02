@@ -22,6 +22,8 @@ namespace Themisquo.AspNetCore
 
         private readonly Lazy<ILookup<Type, QueryEndpointMetadata>> endpointsByResultType;
         private readonly Lazy<ILookup<string, CommandEndpointMetadata>> commandsByRouteShape;
+        private readonly Lazy<ILookup<Type, CommandEndpointMetadata>> commandsByType;
+        private readonly Lazy<ILookup<string, CommandEndpointMetadata>> commandsByContext;
 
         public ResourceCatalog(EndpointDataSource endpointDataSource)
         {
@@ -30,10 +32,15 @@ namespace Themisquo.AspNetCore
                 .OfType<QueryEndpointMetadata>()
                 .Where(metadata => HttpMethods.IsGet(metadata.HttpMethod))
                 .ToLookup(metadata => metadata.ResultType));
-            commandsByRouteShape = new(() => endpointDataSource.Endpoints
+            var commands = new Lazy<IReadOnlyList<CommandEndpointMetadata>>(() => endpointDataSource.Endpoints
                 .Select(endpoint => endpoint.Metadata.GetMetadata<CommandEndpointMetadata>())
                 .OfType<CommandEndpointMetadata>()
-                .ToLookup(metadata => RouteShape(metadata.Pattern)));
+                .ToList());
+            commandsByRouteShape = new(() => commands.Value.ToLookup(metadata => RouteShape(metadata.Pattern)));
+            commandsByType = new(() => commands.Value.ToLookup(metadata => metadata.CommandType));
+            commandsByContext = new(() => commands.Value
+                .Where(metadata => ResourceConventions.GetAction(metadata.CommandType)?.Context is not null)
+                .ToLookup(metadata => ResourceConventions.GetAction(metadata.CommandType)!.Context!, StringComparer.Ordinal));
         }
 
         /// <summary>
@@ -63,7 +70,7 @@ namespace Themisquo.AspNetCore
 
         /// <summary>
         /// Like <see cref="GetItemPath"/>, but also returns the route pattern the path was resolved from, for
-        /// <see cref="GetActions"/>.
+        /// <see cref="GetActions(string, string)"/>.
         /// </summary>
         public ResourceRoute? GetItemRoute(Type itemType, object item, HttpRequest request)
         {
@@ -141,18 +148,123 @@ namespace Themisquo.AspNetCore
         /// <param name="path">The resource's resolved path, including the request's path base.</param>
         public IReadOnlyList<ResourceAction> GetActions(string routePattern, string path) =>
             commandsByRouteShape.Value[RouteShape(routePattern)]
-                .Select(metadata =>
-                {
-                    var action = ResourceConventions.GetAction(metadata.CommandType);
-                    return new ResourceAction(
-                        action?.Name ?? ResourceConventions.GetDefaultTypeName(metadata.CommandType),
-                        metadata.HttpMethod,
-                        path,
-                        metadata.CommandType,
-                        BodyFields(metadata.CommandType, LocationTemplate.GetPlaceholders(metadata.Pattern)),
-                        action?.Title);
-                })
+                .Select(metadata => CommandAction(metadata, path))
                 .ToList();
+
+        /// <summary>
+        /// The actions on a resource returned by <paramref name="queryType"/>, or on an item of its list, in order:
+        /// <list type="number">
+        /// <item>the commands mapped on the resource's route (see <see cref="GetActions(string, string)"/>), unless
+        /// <see cref="ResourceAttribute.AutoActions"/> or <see cref="ResourceAttribute.AutoItemActions"/> is <c>false</c>;</item>
+        /// <item>the commands declared with <see cref="ResourceActionAttribute{TCommand}"/> or <see cref="ItemActionAttribute{TCommand}"/>;</item>
+        /// <item>the commands whose <see cref="ActionAttribute.Context"/> matches <see cref="ResourceAttribute.Context"/> or
+        /// <see cref="ResourceAttribute.ItemContext"/>;</item>
+        /// <item>the external actions declared with <see cref="ResourceActionAttribute"/> or <see cref="ItemActionAttribute"/>.</item>
+        /// </list>
+        /// A command appears once.
+        /// </summary>
+        /// <remarks>
+        /// A declared command's route, or an external action's URL template, is filled like a link: from the target's
+        /// property of the same name, then from its primary id for the last placeholder only, then from the request's
+        /// route values. An action that can't be fully resolved is left out.
+        /// </remarks>
+        /// <param name="queryType">The query that returns the resource, or the list query for its items.</param>
+        /// <param name="forItems">Whether the actions are for an item of the list rather than the resource itself.</param>
+        /// <param name="route">The resource's route, for the commands mapped on it; <c>null</c> when it has none.</param>
+        /// <param name="target">The resource or item placeholders are filled from; <c>null</c> for none, such as for a list.</param>
+        /// <param name="request">The current request, for its path base and route values.</param>
+        public IReadOnlyList<ResourceAction> GetActions(Type queryType, bool forItems, ResourceRoute? route, object? target, HttpRequest request)
+        {
+            var resource = ResourceConventions.GetResource(queryType);
+            var automatic = forItems ? resource?.AutoItemActions ?? true : resource?.AutoActions ?? true;
+            var context = forItems ? resource?.ItemContext : resource?.Context;
+            var declared = ResourceConventions.GetDeclaredActions(queryType, forItems);
+            var idProperty = target is null ? null : TargetIdProperty(queryType, forItems, target, resource);
+
+            var actions = new List<ResourceAction>();
+            if (automatic && route is not null)
+            {
+                actions.AddRange(GetActions(route.Pattern, route.Path));
+            }
+
+            var commands = declared
+                .Where(declaration => declaration.CommandType is not null)
+                .Select(declaration => (declaration.CommandType!, declaration.Title))
+                .Concat((context is null ? [] : commandsByContext.Value[context])
+                    .Select(metadata => (metadata.CommandType, (string?)null)));
+            foreach (var (commandType, title) in commands)
+            {
+                if (actions.Any(action => action.CommandType == commandType))
+                {
+                    continue;
+                }
+
+                foreach (var metadata in commandsByType.Value[commandType])
+                {
+                    if (ResolveTemplate("/" + metadata.Pattern.TrimStart('/'), target, idProperty, request) is { } path)
+                    {
+                        var action = CommandAction(metadata, $"{request.PathBase}{path}");
+                        actions.Add(title is null ? action : action with { Title = title });
+                        break;
+                    }
+                }
+            }
+
+            foreach (var declaration in declared.Where(declaration => declaration.CommandType is null))
+            {
+                var template = declaration.UrlTemplate!;
+                var isAbsolute = template.StartsWith(Uri.UriSchemeHttp + "://", StringComparison.OrdinalIgnoreCase)
+                    || template.StartsWith(Uri.UriSchemeHttps + "://", StringComparison.OrdinalIgnoreCase);
+                if (ResolveTemplate(isAbsolute ? template : "/" + template.TrimStart('/'), target, idProperty, request) is { } url)
+                {
+                    actions.Add(new ResourceAction(
+                        declaration.Name!,
+                        declaration.Method!.ToUpperInvariant(),
+                        isAbsolute ? url : $"{request.PathBase}{url}",
+                        null,
+                        (declaration.Fields ?? []).Select(field => new ResourceActionField(field, typeof(string))).ToList(),
+                        declaration.Title));
+                }
+            }
+
+            return actions;
+        }
+
+        private static ResourceAction CommandAction(CommandEndpointMetadata metadata, string path)
+        {
+            var action = ResourceConventions.GetAction(metadata.CommandType);
+            return new ResourceAction(
+                action?.Name ?? ResourceConventions.GetDefaultTypeName(metadata.CommandType),
+                metadata.HttpMethod,
+                path,
+                metadata.CommandType,
+                BodyFields(metadata.CommandType, LocationTemplate.GetPlaceholders(metadata.Pattern)),
+                action?.Title);
+        }
+
+        // The target's primary id: named by the query's [Resource(Id)] for a single result, else by the one on a
+        // single-item query for the target's type, else its Id property.
+        private PropertyInfo? TargetIdProperty(Type queryType, bool forItems, object target, ResourceAttribute? resource)
+        {
+            var resultType = ResourceConventions.GetQueryResultType(queryType);
+            var targetType = (forItems && resultType is not null ? ResourceConventions.GetCollectionElementType(resultType) : resultType)
+                ?? target.GetType();
+            var idResource = !forItems && resource?.Id is not null
+                ? resource
+                : endpointsByResultType.Value[targetType]
+                    .Select(metadata => ResourceConventions.GetResource(metadata.QueryType))
+                    .FirstOrDefault(r => r?.Id is not null);
+            return ResourceConventions.GetIdProperty(target.GetType(), idResource);
+        }
+
+        private static string? ResolveTemplate(string template, object? target, PropertyInfo? idProperty, HttpRequest request)
+        {
+            var lastPlaceholder = LocationTemplate.GetPlaceholders(template).LastOrDefault();
+            return LocationTemplate.TryResolve(template, name =>
+                (target is null ? null : PropertyValue(target, name))
+                ?? (target is not null && string.Equals(name, lastPlaceholder, StringComparison.OrdinalIgnoreCase) ? idProperty?.GetValue(target) : null)
+                ?? request.RouteValues[name]);
+        }
 
         // The properties the request body can bind: writable, or set through a constructor parameter (positional
         // records), except those bound from the route.
