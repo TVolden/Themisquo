@@ -7,12 +7,14 @@ namespace Themisquo.AspNetCore.Siren
     {
         /// <summary>
         /// Makes query endpoints mapped by <see cref="ThemisquoEndpointExtensions.MapQuery{TQuery, TResult}"/> respond
-        /// with Siren documents (<c>application/vnd.siren+json</c>) instead of plain JSON.
+        /// with Siren documents (<c>application/vnd.siren+json</c>) instead of plain JSON, and command endpoints that
+        /// respond 201 Created include the created resource as a Siren document.
         /// </summary>
         public static IServiceCollection AddThemisquoSiren(this IServiceCollection services)
         {
             services.TryAddSingleton<ResourceCatalog>();
             services.AddSingleton<IQueryResultWriter, SirenQueryResultWriter>();
+            services.AddSingleton<ICommandResultWriter, SirenCommandResultWriter>();
             return services;
         }
     }

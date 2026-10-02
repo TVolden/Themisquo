@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Themisquo.AspNetCore;
 using Themisquo.AspNetCore.Siren;
@@ -532,6 +534,97 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
+        public async Task MapCommand_SirenEnabled_LocationMatchesQueryRoute_Returns201WithCreatedSirenEntity()
+        {
+            // Given
+            await using var app = await StartCommandAppAsync(
+                services => services.AddQueryHandler<GetNoteQueryHandler, GetNoteQuery, INote>(),
+                endpoints =>
+                {
+                    endpoints.MapCommand<AddNoteCommand>("/notes");
+                    endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                    endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
+                });
+            using var client = app.GetTestClient();
+            var noteId = Guid.NewGuid();
+
+            // When
+            var response = await client.PostAsJsonAsync("/notes", new { NoteId = noteId });
+
+            // Then
+            Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+            Assert.AreEqual($"/notes/{noteId}", response.Headers.Location?.ToString());
+            Assert.AreEqual("application/vnd.siren+json", response.Content.Headers.ContentType?.MediaType);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            CollectionAssert.AreEqual(new[] { "iNote" }, Strings(root.GetProperty("class")));
+            Assert.AreEqual(noteId, root.GetProperty("properties").GetProperty("noteId").GetGuid());
+            Assert.AreEqual($"/notes/{noteId}", SelfHref(root));
+            var action = root.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("updateNoteCommand", action.GetProperty("name").GetString());
+            Assert.AreEqual($"/notes/{noteId}", action.GetProperty("href").GetString());
+        }
+
+        [TestMethod]
+        public async Task MapCommand_SirenEnabled_LocationMatchesNoQueryRoute_Returns201WithoutBody()
+        {
+            // Given
+            await using var app = await StartCommandAppAsync(
+                services => { },
+                endpoints => endpoints.MapCommand<AddNoteCommand>("/notes"));
+            using var client = app.GetTestClient();
+            var noteId = Guid.NewGuid();
+
+            // When
+            var response = await client.PostAsJsonAsync("/notes", new { NoteId = noteId });
+
+            // Then
+            Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+            Assert.AreEqual($"/notes/{noteId}", response.Headers.Location?.ToString());
+            Assert.AreEqual("", await response.Content.ReadAsStringAsync());
+        }
+
+        [TestMethod]
+        public async Task MapCommand_SirenEnabled_LocationQueryFails_Returns201WithoutBody()
+        {
+            // Given
+            await using var app = await StartCommandAppAsync(
+                services => services.AddQueryHandler<FailingGetNoteQueryHandler, GetNoteQuery, INote>(),
+                endpoints =>
+                {
+                    endpoints.MapCommand<AddNoteCommand>("/notes");
+                    endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                });
+            using var client = app.GetTestClient();
+            var noteId = Guid.NewGuid();
+
+            // When
+            var response = await client.PostAsJsonAsync("/notes", new { NoteId = noteId });
+
+            // Then
+            Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+            Assert.AreEqual($"/notes/{noteId}", response.Headers.Location?.ToString());
+            Assert.AreEqual("", await response.Content.ReadAsStringAsync());
+        }
+
+        [TestMethod]
+        public async Task MapCommand_SirenEnabled_NoLocatedEvent_Returns200WithoutBody()
+        {
+            // Given
+            await using var app = await StartCommandAppAsync(
+                services => services.AddCommandHandler<NoopUpdateNoteCommandHandler, UpdateNoteCommand>(),
+                endpoints => endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT"));
+            using var client = app.GetTestClient();
+
+            // When
+            var response = await client.PutAsJsonAsync($"/notes/{Guid.NewGuid()}", new { Text = "foo" });
+
+            // Then
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("", await response.Content.ReadAsStringAsync());
+        }
+
+        [TestMethod]
         public async Task MapQuery_SirenNotEnabled_ReturnsPlainJson()
         {
             // Given
@@ -581,6 +674,23 @@ namespace Themisquo.Test
             Assert.AreEqual("application/vnd.siren+json", response.Content.Headers.ContentType?.MediaType);
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             return document.RootElement.Clone();
+        }
+
+        private static async Task<WebApplication> StartCommandAppAsync(Action<IServiceCollection> registerHandlers, Action<WebApplication> mapEndpoints)
+        {
+            var builder = WebApplication.CreateBuilder();
+            builder.WebHost.UseTestServer();
+            builder.Services.AddThemisquo();
+            builder.Services.AddThemisquoCommandLocations();
+            builder.Services.AddThemisquoSiren();
+            builder.Services.AddCommandHandler<AddNoteCommandHandler, AddNoteCommand>();
+            builder.Services.AddScoped<IEventObserver<NoteAddedEvent>, NoopNoteAddedObserver>();
+            registerHandlers(builder.Services);
+
+            var app = builder.Build();
+            mapEndpoints(app);
+            await app.StartAsync();
+            return app;
         }
 
         private static async Task<WebApplication> StartAppAsync(IQueryDispatcher dispatcher, bool sirenEnabled, Action<WebApplication> mapEndpoints)
@@ -713,6 +823,49 @@ namespace Themisquo.Test
             public Guid Instance { get; } = Guid.NewGuid();
             public Guid NoteId { get; set; }
             public string Text { get; set; } = "";
+        }
+
+        public class AddNoteCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid NoteId { get; set; }
+        }
+
+        [Location("/notes/{NoteId}")]
+        public class NoteAddedEvent : IEvent
+        {
+            public int Version => 1;
+            public DateTime EventTime => DateTime.UtcNow;
+            public Guid ProcessId => Guid.NewGuid();
+            public required Guid NoteId { get; init; }
+        }
+
+        public class AddNoteCommandHandler : ICommandHandler<AddNoteCommand>
+        {
+            public Task Handle(AddNoteCommand command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken) =>
+                eventDispatcher.Dispatch(new NoteAddedEvent { NoteId = command.NoteId }, cancellationToken);
+        }
+
+        public class NoopNoteAddedObserver : IEventObserver<NoteAddedEvent>
+        {
+            public Task Invoke(NoteAddedEvent @event, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
+        public class NoopUpdateNoteCommandHandler : ICommandHandler<UpdateNoteCommand>
+        {
+            public Task Handle(UpdateNoteCommand command, IEventDispatcher eventDispatcher, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
+        public class GetNoteQueryHandler : IQueryHandler<GetNoteQuery, INote>
+        {
+            public Task<INote> Handle(GetNoteQuery query, CancellationToken cancellationToken) =>
+                Task.FromResult<INote>(new Note { NoteId = query.NoteId });
+        }
+
+        public class FailingGetNoteQueryHandler : IQueryHandler<GetNoteQuery, INote>
+        {
+            public Task<INote> Handle(GetNoteQuery query, CancellationToken cancellationToken) =>
+                throw new InvalidOperationException("The read model hasn't caught up yet.");
         }
 
         [Action(Name = "rename", Title = "Rename note")]

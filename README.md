@@ -209,6 +209,13 @@ Its fields are the command properties the request body can set, which leaves out
 
 A command without body fields, such as a delete, has no `type` or `fields`.
 
+When a command responds `201 Created` with a `Location` (see `AddThemisquoCommandLocations()` above), Siren dispatches the query mapped on the location's route. The response body is the created resource as a Siren document, the same one a `GET` of the location returns. So the client doesn't need a second request to get the new resource and its actions. The query is bound from the location's route values, the same way commands are bound.
+
+The response falls back to `201 Created` with only the `Location` header when:
+* no query route matches the location;
+* the query fails, for example because an asynchronously updated read model hasn't caught up yet. A warning is logged;
+* the query returns `null`.
+
 A scalar result such as a `string` or `bool` is wrapped as `properties.value`.
 
 By default, the class name is the result type's name in camelCase, so `ICard` becomes `iCard` and `CardDto` becomes `cardDto`. The primary id is the result's `Id` property.

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Template;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Themisquo.AspNetCore
@@ -87,6 +89,43 @@ namespace Themisquo.AspNetCore
                 if (path is not null)
                 {
                     return new ResourceRoute(metadata.Pattern, $"{request.PathBase}{path}");
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// The single-item query endpoint whose route matches <paramref name="path"/>, such as a command's Location,
+        /// with its query bound from the path's route values the way command route values are bound; <c>null</c> if no
+        /// route matches or the query can't be bound. Route constraints aren't checked.
+        /// </summary>
+        /// <param name="path">A path without the request's path base, or an absolute http(s) URL.</param>
+        public ResourceQuery? FindQuery(string path)
+        {
+            path = Uri.TryCreate(path, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                ? uri.AbsolutePath
+                : path.Split('?', '#')[0];
+
+            foreach (var metadata in endpointsByResultType.Value.SelectMany(endpoints => endpoints).Where(m => IsSingleResource(m.ResultType)))
+            {
+                var routeValues = new RouteValueDictionary();
+                var matcher = new TemplateMatcher(TemplateParser.Parse(metadata.Pattern.TrimStart('/')), new RouteValueDictionary());
+                if (!matcher.TryMatch("/" + path.TrimStart('/'), routeValues))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (ThemisquoEndpointExtensions.BindFromRouteValues(metadata.QueryType, routeValues) is { } query)
+                    {
+                        return new ResourceQuery(metadata, query);
+                    }
+                }
+                catch (JsonException)
+                {
+                    // A route value that doesn't fit the query property's type, so this route isn't the one.
                 }
             }
 

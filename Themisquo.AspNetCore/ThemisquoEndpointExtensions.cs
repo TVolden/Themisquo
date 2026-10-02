@@ -38,14 +38,16 @@ public static class ThemisquoEndpointExtensions
 
             var recordedEvents = context.RequestServices.GetService<RecordedEvents>();
             var locatedEvent = recordedEvents?.Events.FirstOrDefault(e => e.GetType().IsDefined(typeof(LocationAttribute)));
-            if (locatedEvent is not null)
+            var location = locatedEvent is null
+                ? null
+                : LocationTemplate.Resolve(locatedEvent.GetType().GetCustomAttribute<LocationAttribute>()!.UrlTemplate, locatedEvent);
+
+            if (context.RequestServices.GetService<ICommandResultWriter>() is { } writer)
             {
-                var locationAttribute = locatedEvent.GetType().GetCustomAttribute<LocationAttribute>()!;
-                var location = LocationTemplate.Resolve(locationAttribute.UrlTemplate, locatedEvent);
-                return Results.Created(location, null);
+                return await writer.Write(context, command, location, cancellationToken);
             }
 
-            return Results.Ok();
+            return location is not null ? Results.Created(location, null) : Results.Ok();
         }).WithMetadata(new CommandEndpointMetadata(typeof(TCommand), pattern, httpMethod));
         return endpoints;
     }
@@ -57,16 +59,28 @@ public static class ThemisquoEndpointExtensions
                 ?? new JsonObject(RouteBindingNodeOptions)
             : new JsonObject(RouteBindingNodeOptions);
 
-        foreach (var (key, value) in request.RouteValues)
+        AddRouteValues(json, request.RouteValues);
+        return json.Deserialize<TCommand>(RouteBindingSerializerOptions)
+            ?? throw new BadHttpRequestException("Request body could not be bound.");
+    }
+
+    /// <summary>Binds <paramref name="type"/> from route values alone, the way command route values are bound.</summary>
+    internal static object? BindFromRouteValues(Type type, RouteValueDictionary routeValues)
+    {
+        var json = new JsonObject(RouteBindingNodeOptions);
+        AddRouteValues(json, routeValues);
+        return json.Deserialize(type, RouteBindingSerializerOptions);
+    }
+
+    private static void AddRouteValues(JsonObject json, RouteValueDictionary routeValues)
+    {
+        foreach (var (key, value) in routeValues)
         {
             if (value is not null)
             {
                 json[key] = JsonValue.Create(value.ToString());
             }
         }
-
-        return json.Deserialize<TCommand>(RouteBindingSerializerOptions)
-            ?? throw new BadHttpRequestException("Request body could not be bound.");
     }
 
     public static IEndpointRouteBuilder MapCommand(
