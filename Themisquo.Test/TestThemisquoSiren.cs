@@ -393,6 +393,120 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
+        public async Task MapQuery_SirenEnabled_SingleResultRouteHasCommand_AddsActionWithNonRouteFields()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}?expand=all");
+
+            // Then
+            var action = root.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("updateNoteCommand", action.GetProperty("name").GetString());
+            Assert.AreEqual("PUT", action.GetProperty("method").GetString());
+            Assert.AreEqual($"/notes/{noteId}", action.GetProperty("href").GetString());
+            Assert.AreEqual("application/json", action.GetProperty("type").GetString());
+            var field = action.GetProperty("fields").EnumerateArray().Single();
+            Assert.AreEqual("text", field.GetProperty("name").GetString());
+            Assert.AreEqual("text", field.GetProperty("type").GetString());
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_CommandRouteHasDifferentPlaceholderNameAndNoBody_AddsActionWithoutFields()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapCommand<DeleteNoteCommand>("/notes/{id}", "DELETE");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            var action = root.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("deleteNoteCommand", action.GetProperty("name").GetString());
+            Assert.AreEqual("DELETE", action.GetProperty("method").GetString());
+            Assert.AreEqual($"/notes/{noteId}", action.GetProperty("href").GetString());
+            Assert.IsFalse(action.TryGetProperty("type", out _));
+            Assert.IsFalse(action.TryGetProperty("fields", out _));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_ListRouteHasCommand_CollectionGetsActionWithTypedFields()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<INote>>>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<INote>());
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListProjectNotesQuery, IEnumerable<INote>>("/projects/{projectId}/notes");
+                endpoints.MapCommand<CreateNoteCommand>("/projects/{projectId}/notes");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, $"/projects/{projectId}/notes");
+
+            // Then
+            var action = root.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("createNoteCommand", action.GetProperty("name").GetString());
+            Assert.AreEqual("POST", action.GetProperty("method").GetString());
+            Assert.AreEqual($"/projects/{projectId}/notes", action.GetProperty("href").GetString());
+            var fields = action.GetProperty("fields").EnumerateArray()
+                .ToDictionary(f => f.GetProperty("name").GetString()!, f => f.GetProperty("type").GetString());
+            CollectionAssert.AreEquivalent(new[] { "text", "priority", "pinned" }, fields.Keys.ToArray());
+            Assert.AreEqual("text", fields["text"]);
+            Assert.AreEqual("number", fields["priority"]);
+            Assert.AreEqual("checkbox", fields["pinned"]);
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_ListItemRouteHasCommand_ItemGetsActionOnItsOwnPath()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<INote>>>(), Arg.Any<CancellationToken>())
+                .Returns(new INote[] { new Note { NoteId = noteId } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListNotesQuery, IEnumerable<INote>>("/notes");
+                endpoints.MapQuery<GetNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapCommand<UpdateNoteCommand>("/notes/{noteId}", "PUT");
+            });
+            using var client = app.GetTestClient();
+
+            // When
+            var root = await GetSirenAsync(client, "/notes");
+
+            // Then
+            Assert.IsFalse(root.TryGetProperty("actions", out _));
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            var action = item.GetProperty("actions").EnumerateArray().Single();
+            Assert.AreEqual("updateNoteCommand", action.GetProperty("name").GetString());
+            Assert.AreEqual($"/notes/{noteId}", action.GetProperty("href").GetString());
+        }
+
+        [TestMethod]
         public async Task MapQuery_SirenNotEnabled_ReturnsPlainJson()
         {
             // Given
@@ -449,6 +563,7 @@ namespace Themisquo.Test
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseTestServer();
             builder.Services.AddSingleton(dispatcher);
+            builder.Services.AddSingleton(Substitute.For<IDispatcher>()); // for command endpoints
             if (sirenEnabled)
             {
                 builder.Services.AddThemisquoSiren();
@@ -561,6 +676,33 @@ namespace Themisquo.Test
 
         public class ListNotesQuery : IQuery<IEnumerable<INote>>
         {
+        }
+
+        public class ListProjectNotesQuery : IQuery<IEnumerable<INote>>
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        public class UpdateNoteCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid NoteId { get; set; }
+            public string Text { get; set; } = "";
+        }
+
+        public class DeleteNoteCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid Id { get; set; }
+        }
+
+        public class CreateNoteCommand : ICommand
+        {
+            public Guid Instance { get; } = Guid.NewGuid();
+            public Guid ProjectId { get; set; }
+            public string Text { get; set; } = "";
+            public int Priority { get; set; }
+            public bool Pinned { get; set; }
         }
 
         public interface IProject

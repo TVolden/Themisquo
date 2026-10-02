@@ -46,7 +46,7 @@ public static class ThemisquoEndpointExtensions
             }
 
             return Results.Ok();
-        });
+        }).WithMetadata(new CommandEndpointMetadata(typeof(TCommand), pattern, httpMethod));
         return endpoints;
     }
 

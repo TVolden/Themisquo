@@ -1,13 +1,14 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace Themisquo.AspNetCore
 {
     /// <summary>
     /// The resources served by the GET query endpoints mapped with
     /// <see cref="ThemisquoEndpointExtensions.MapQuery{TQuery, TResult}"/>, for hypermedia formats: what to call a
-    /// result type, and the path that returns a given item.
+    /// result type, the path that returns a given item, the resources it refers to, and the commands that act on it.
     /// </summary>
     /// <remarks>
     /// The endpoints are read on first use, so the catalog can be resolved before they are mapped, but endpoints mapped
@@ -15,7 +16,10 @@ namespace Themisquo.AspNetCore
     /// </remarks>
     public class ResourceCatalog
     {
+        private static readonly Regex PlaceholderPattern = new(@"\{[^}]*\}", RegexOptions.Compiled);
+
         private readonly Lazy<ILookup<Type, QueryEndpointMetadata>> endpointsByResultType;
+        private readonly Lazy<ILookup<string, CommandEndpointMetadata>> commandsByRouteShape;
 
         public ResourceCatalog(EndpointDataSource endpointDataSource)
         {
@@ -24,6 +28,10 @@ namespace Themisquo.AspNetCore
                 .OfType<QueryEndpointMetadata>()
                 .Where(metadata => HttpMethods.IsGet(metadata.HttpMethod))
                 .ToLookup(metadata => metadata.ResultType));
+            commandsByRouteShape = new(() => endpointDataSource.Endpoints
+                .Select(endpoint => endpoint.Metadata.GetMetadata<CommandEndpointMetadata>())
+                .OfType<CommandEndpointMetadata>()
+                .ToLookup(metadata => RouteShape(metadata.Pattern)));
         }
 
         /// <summary>
@@ -48,7 +56,14 @@ namespace Themisquo.AspNetCore
         /// current request's route values. An explicit <see cref="ResourceAttribute.Id"/> on the endpoint's query fills
         /// the last placeholder before anything else.
         /// </remarks>
-        public string? GetItemPath(Type itemType, object item, HttpRequest request)
+        public string? GetItemPath(Type itemType, object item, HttpRequest request) =>
+            GetItemRoute(itemType, item, request)?.Path;
+
+        /// <summary>
+        /// Like <see cref="GetItemPath"/>, but also returns the route pattern the path was resolved from, for
+        /// <see cref="GetActions"/>.
+        /// </summary>
+        public ResourceRoute? GetItemRoute(Type itemType, object item, HttpRequest request)
         {
             foreach (var metadata in endpointsByResultType.Value[itemType])
             {
@@ -71,12 +86,48 @@ namespace Themisquo.AspNetCore
                 });
                 if (path is not null)
                 {
-                    return $"{request.PathBase}{path}";
+                    return new ResourceRoute(metadata.Pattern, $"{request.PathBase}{path}");
                 }
             }
 
             return null;
         }
+
+        /// <summary>
+        /// The commands mapped with <see cref="ThemisquoEndpointExtensions.MapCommand{TCommand}"/> on the same route as
+        /// a resource, which can be sent to it at <paramref name="path"/>. Routes match by shape, so placeholder names and
+        /// constraints are ignored: <c>/cards/{id}</c> matches <c>/cards/{cardId:guid}</c>.
+        /// </summary>
+        /// <param name="routePattern">The resource's route pattern, such as the one from <see cref="GetItemRoute"/>.</param>
+        /// <param name="path">The resource's resolved path, including the request's path base.</param>
+        public IReadOnlyList<ResourceAction> GetActions(string routePattern, string path) =>
+            commandsByRouteShape.Value[RouteShape(routePattern)]
+                .Select(metadata => new ResourceAction(
+                    ResourceConventions.GetDefaultTypeName(metadata.CommandType),
+                    metadata.HttpMethod,
+                    path,
+                    metadata.CommandType,
+                    BodyFields(metadata.CommandType, LocationTemplate.GetPlaceholders(metadata.Pattern))))
+                .ToList();
+
+        // The properties the request body can bind: writable, or set through a constructor parameter (positional
+        // records), except those bound from the route.
+        private static IReadOnlyList<ResourceActionField> BodyFields(Type commandType, IReadOnlyList<string> routePlaceholders)
+        {
+            var constructorParameters = commandType.GetConstructors()
+                .SelectMany(constructor => constructor.GetParameters())
+                .Select(parameter => parameter.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return commandType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(property => property.SetMethod?.IsPublic == true || constructorParameters.Contains(property.Name))
+                .Where(property => !routePlaceholders.Contains(property.Name, StringComparer.OrdinalIgnoreCase))
+                .Select(property => new ResourceActionField(property.Name, Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType))
+                .ToList();
+        }
+
+        private static string RouteShape(string pattern) =>
+            PlaceholderPattern.Replace("/" + pattern.Trim('/'), "{}").ToLowerInvariant();
 
         /// <summary>
         /// The resources <paramref name="item"/> refers to: one for each single-item query endpoint of another result

@@ -172,6 +172,36 @@ A single result, or an item in a list, also links to the resources it refers to.
 
 The related route's other placeholders are filled from the item's properties of the same name, then from the request's route values. Related routes that can't be fully resolved are skipped. Routes that return the item's own type, a list or a scalar aren't linked.
 
+Commands mapped on the same route as an entity become its Siren `actions`. Routes match by shape, so placeholder names don't matter: `DELETE /cards/{id}` acts on `GET /cards/{cardId}`. This applies to:
+* a single result;
+* a list, so a create command on the list route appears on the collection;
+* each item in a list, at the item's own route.
+
+```csharp
+app.MapQuery<GetCardQuery, ICard>("/cards/{cardId}");
+app.MapCommand<RenameCardCommand>("/cards/{cardId}", "PUT"); // RenameCardCommand(Guid CardId, string Title)
+```
+
+```json
+"actions": [
+  {
+    "name": "renameCardCommand",
+    "method": "PUT",
+    "href": "/cards/7",
+    "type": "application/json",
+    "fields": [{ "name": "title", "type": "text" }]
+  }
+]
+```
+
+The action's name is the command type's name in camelCase. Its fields are the command properties the request body can set, which leaves out properties bound from the route. Each field's type is an HTML input type:
+* `number` for numeric properties;
+* `checkbox` for `bool`;
+* `date`, `time` or `datetime-local` for dates and times;
+* `text` for everything else.
+
+A command without body fields, such as a delete, has no `type` or `fields`.
+
 A scalar result such as a `string` or `bool` is wrapped as `properties.value`.
 
 By default, the class name is the result type's name in camelCase, so `ICard` becomes `iCard` and `CardDto` becomes `cardDto`. The primary id is the result's `Id` property.
