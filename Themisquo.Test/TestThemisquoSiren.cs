@@ -673,6 +673,179 @@ namespace Themisquo.Test
         }
 
         [TestMethod]
+        public async Task MapQuery_SirenEnabled_SingleResultHasNestedQueryRoutes_LinksToDirectChildrenOnly()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IProject>>(), Arg.Any<CancellationToken>())
+                .Returns(new Project { ProjectId = projectId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+                endpoints.MapQuery<ListProjectCardsQuery, IEnumerable<ICard>>("/projects/{id:guid}/cards");
+                endpoints.MapQuery<GetProjectCardQuery, ICard>("/projects/{projectId}/cards/{cardId}");
+                endpoints.MapQuery<ListProjectRulesQuery, IEnumerable<INote>>("/projects/{projectId}/rules");
+                endpoints.MapQuery<ListRuleDependenciesQuery, IEnumerable<INote>>("/projects/{projectId}/rules/dependencies");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/projects/{projectId}");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self", "cards", "rules" }, LinkRels(root));
+            Assert.AreEqual($"/projects/{projectId}/cards", LinkHref(root, "cards"));
+            Assert.AreEqual($"/projects/{projectId}/rules", LinkHref(root, "rules"));
+            CollectionAssert.AreEqual(new[] { "iCard", "collection" }, LinkClass(root, "cards"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_ListItemHasNestedQueryRoute_ItemLinksToIt()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<IProject>>>(), Arg.Any<CancellationToken>())
+                .Returns(new IProject[] { new Project { ProjectId = projectId } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListProjectsQuery, IEnumerable<IProject>>("/projects");
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+                endpoints.MapQuery<ListProjectCardsQuery, IEnumerable<ICard>>("/projects/{projectId}/cards");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, "/projects");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self" }, LinkRels(root));
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            CollectionAssert.AreEqual(new[] { "self", "cards" }, LinkRels(item));
+            Assert.AreEqual($"/projects/{projectId}/cards", LinkHref(item, "cards"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_ListRouteHasNestedQueryRoute_CollectionLinksToIt()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<INote>>>(), Arg.Any<CancellationToken>())
+                .Returns(Array.Empty<INote>());
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<ListProjectRulesQuery, IEnumerable<INote>>("/projects/{projectId}/rules");
+                endpoints.MapQuery<ListRuleDependenciesQuery, IEnumerable<INote>>("/projects/{projectId}/rules/dependencies");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/projects/{projectId}/rules");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self", "dependencies" }, LinkRels(root));
+            Assert.AreEqual($"/projects/{projectId}/rules/dependencies", LinkHref(root, "dependencies"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_NestedQueryHasResourceRel_LinkUsesIt()
+        {
+            // Given
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IProject>>(), Arg.Any<CancellationToken>())
+                .Returns(new Project { ProjectId = projectId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+                endpoints.MapQuery<ListProjectDeckQuery, IEnumerable<ICard>>("/projects/{projectId}/collection");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/projects/{projectId}");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self", "deck" }, LinkRels(root));
+            Assert.AreEqual($"/projects/{projectId}/collection", LinkHref(root, "deck"));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_AutoLinksOff_KeepsOnlySelfLink()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId, ProjectId = Guid.NewGuid() });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetUnlinkedNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+                endpoints.MapQuery<ListNoteCommentsQuery, IEnumerable<INote>>("/notes/{noteId}/comments");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self" }, LinkRels(root));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_DeclaredQueryAndExternalLinks_AddedAfterAutomaticLinks()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var projectId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<INote>>(), Arg.Any<CancellationToken>())
+                .Returns(new Note { NoteId = noteId, ProjectId = projectId });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+            {
+                endpoints.MapQuery<GetLinkedNoteQuery, INote>("/notes/{noteId}");
+                endpoints.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+                endpoints.MapQuery<ListProjectNotesQuery, IEnumerable<INote>>("/projects/{projectId}/notes");
+            });
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, $"/notes/{noteId}");
+
+            // Then
+            CollectionAssert.AreEqual(new[] { "self", "project", "iNote", "docs" }, LinkRels(root));
+            Assert.AreEqual($"/projects/{projectId}/notes", LinkHref(root, "iNote"));
+            CollectionAssert.AreEqual(new[] { "iNote", "collection" }, LinkClass(root, "iNote"));
+            Assert.AreEqual($"https://docs.example/notes/{noteId}", LinkHref(root, "docs"));
+            Assert.IsFalse(root.GetProperty("links").EnumerateArray()
+                .Single(l => Strings(l.GetProperty("rel")).Contains("docs")).TryGetProperty("class", out _));
+        }
+
+        [TestMethod]
+        public async Task MapQuery_SirenEnabled_DeclaredItemLink_EachItemGetsIt()
+        {
+            // Given
+            var noteId = Guid.NewGuid();
+            var dispatcherMock = Substitute.For<IQueryDispatcher>();
+            dispatcherMock.Dispatch(Arg.Any<IQuery<IEnumerable<INote>>>(), Arg.Any<CancellationToken>())
+                .Returns(new INote[] { new Note { NoteId = noteId } });
+            await using var app = await StartAppAsync(dispatcherMock, sirenEnabled: true, endpoints =>
+                endpoints.MapQuery<ListPreviewableNotesQuery, IEnumerable<INote>>("/notes"));
+            using var client = SirenClient(app);
+
+            // When
+            var root = await GetSirenAsync(client, "/notes");
+
+            // Then
+            var item = root.GetProperty("entities").EnumerateArray().Single();
+            CollectionAssert.AreEqual(new[] { "preview" }, LinkRels(item));
+            Assert.AreEqual($"/preview/{noteId}", LinkHref(item, "preview"));
+        }
+
+        [TestMethod]
         public async Task MapCommand_SirenEnabled_LocationMatchesQueryRoute_Returns201WithCreatedSirenEntity()
         {
             // Given
@@ -906,6 +1079,11 @@ namespace Themisquo.Test
             entity.GetProperty("links").EnumerateArray()
                 .Single(l => Strings(l.GetProperty("rel")).Contains(rel))
                 .GetProperty("href").GetString();
+
+        private static string?[] LinkClass(JsonElement entity, string rel) =>
+            Strings(entity.GetProperty("links").EnumerateArray()
+                .Single(l => Strings(l.GetProperty("rel")).Contains(rel))
+                .GetProperty("class"));
 
         private static string?[] ItemSelfHrefs(JsonElement root) =>
             root.GetProperty("entities").EnumerateArray().Select(SelfHref).ToArray();
@@ -1206,6 +1384,54 @@ namespace Themisquo.Test
         public class GetProjectQuery : IQuery<IProject>
         {
             public Guid ProjectId { get; set; }
+        }
+
+        public class Project : IProject
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        public class ListProjectsQuery : IQuery<IEnumerable<IProject>>
+        {
+        }
+
+        public class ListProjectRulesQuery : IQuery<IEnumerable<INote>>
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        public class ListRuleDependenciesQuery : IQuery<IEnumerable<INote>>
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        [Resource(Rel = "deck")]
+        public class ListProjectDeckQuery : IQuery<IEnumerable<ICard>>
+        {
+            public Guid ProjectId { get; set; }
+        }
+
+        [Resource(AutoLinks = false)]
+        public class GetUnlinkedNoteQuery : IQuery<INote>
+        {
+            public Guid NoteId { get; set; }
+        }
+
+        public class ListNoteCommentsQuery : IQuery<IEnumerable<INote>>
+        {
+            public Guid NoteId { get; set; }
+        }
+
+        [ResourceLink<ListProjectNotesQuery>]
+        [ResourceLink("docs", "https://docs.example/notes/{noteId}")]
+        public class GetLinkedNoteQuery : IQuery<INote>
+        {
+            public Guid NoteId { get; set; }
+        }
+
+        [ItemLink("preview", "/preview/{noteId}")]
+        public class ListPreviewableNotesQuery : IQuery<IEnumerable<INote>>
+        {
         }
 
         [Resource(Type = "project")]

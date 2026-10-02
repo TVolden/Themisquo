@@ -175,6 +175,36 @@ A single result, or an item in a list, also links to the resources it refers to.
 
 The related route's other placeholders are filled from the item's properties of the same name, then from the request's route values. Related routes that can't be fully resolved are skipped. Routes that return the item's own type, a list or a scalar aren't linked.
 
+#### Links to nested resources
+
+An entity also links to the GET queries nested directly under its route: those whose route is the entity's route plus one literal segment. The link's `rel` is that segment, and its `class` is the nested resource's. For example, with these endpoints:
+
+```csharp
+app.MapQuery<GetProjectQuery, IProject>("/projects/{projectId}");
+app.MapQuery<GetProjectCardsQuery, IEnumerable<ICard>>("/projects/{projectId}/cards");
+app.MapQuery<GetProjectRulesQuery, IEnumerable<IRule>>("/projects/{projectId}/rules");
+app.MapQuery<GetRuleDependenciesQuery, IEnumerable<IRule>>("/projects/{projectId}/rules/dependencies");
+```
+
+a project links to its cards and rules:
+
+```json
+"links": [
+  { "rel": ["self"], "href": "/projects/…" },
+  { "rel": ["cards"], "href": "/projects/…/cards", "class": ["card", "collection"] },
+  { "rel": ["rules"], "href": "/projects/…/rules", "class": ["rule", "collection"] }
+]
+```
+
+This applies to:
+* a single result;
+* each item in a list that has its own route, so every project in `GET /projects` links to its cards;
+* a list, so the rules list links to `dependencies`.
+
+Only direct children are linked. A project doesn't link to `rules/dependencies`; the rules list does. A route with another placeholder, such as `/projects/{projectId}/cards/{cardId}`, is an item rather than a nested resource, so it isn't linked this way. Routes match by shape, so placeholder names and constraints don't matter.
+
+To use a different `rel`, put `[Resource(Rel = "…")]` on the nested query.
+
 Commands mapped on the same route as an entity become its Siren `actions`, unless switched off (see [Declaring actions](#declaring-actions)). Routes match by shape, so placeholder names don't matter: `DELETE /cards/{id}` acts on `GET /cards/{cardId}`. This applies to:
 * a single result;
 * a list, so a create command on the list route appears on the collection;
@@ -275,6 +305,39 @@ It throws when:
 * a `Context` or `ItemContext` matches no mapped command;
 * an `Item…` attribute, `ItemContext` or `AutoItemActions` is on a query that doesn't return a list;
 * an external action's method isn't an HTTP method.
+
+#### Declaring links
+
+Links work the same way as actions: automatic by default, declarable, and switchable off.
+
+| | Entity (`Resource…`) | Items of a list (`Item…`) |
+|---|---|---|
+| A mapped GET query | `[ResourceLink<TQuery>(Rel = "…")]` | `[ItemLink<TQuery>(Rel = "…")]` |
+| An external URL | `[ResourceLink("rel", "url template")]` | `[ItemLink("rel", "url template")]` |
+| Switch off automatic links | `[Resource(AutoLinks = false)]` | `[Resource(AutoItemLinks = false)]` |
+
+```csharp
+[Endpoint("/projects/{projectId}/cards/{cardId}")]
+[ResourceLink<GetProjectTemplatesQuery>(Rel = "templates")]
+[ResourceLink("preview", "https://preview.example/cards/{cardId}")]
+public record GetCardQuery(Guid ProjectId, Guid CardId) : IQuery<ICard>;
+```
+
+* **A mapped query** is linked at its route, filled like a declared command's. Its `rel` defaults to the query's `[Resource(Rel)]`, else its resource type name.
+* **An external link** is filled like an external action: a relative URL gets the request's path base in front, and an absolute `http(s)` URL is used as is.
+* **Switching off** removes all automatic links except `self`: the links to referenced resources and to nested resources.
+
+The declared links come after the automatic ones. A link with the same `rel` and `href` appears once, and a link that can't be fully resolved is left out.
+
+Check the declarations at startup, after mapping the endpoints:
+
+```csharp
+app.ValidateResourceLinks(); // throws InvalidResourceLinkException
+```
+
+It throws when:
+* a linked query isn't mapped as a GET query endpoint;
+* an `ItemLink…` attribute or `AutoItemLinks` is on a query that doesn't return a list.
 
 ## Setting up DI and registering handlers
 

@@ -47,5 +47,23 @@ namespace Themisquo.AspNetCore
         /// the declared item actions, or none. Defaults to <c>true</c>.
         /// </summary>
         public bool AutoItemActions { get; set; } = true;
+
+        /// <summary>
+        /// The relation of a link to this query's route, from a parent entity or a declared link. Without it, a link to
+        /// a nested route uses the route's last segment, and a declared link uses the resource type name.
+        /// </summary>
+        public string? Rel { get; set; }
+
+        /// <summary>
+        /// Whether the entity the query returns gets automatic links: to the resources it refers to, and to the queries
+        /// nested under its route. Its <c>self</c> link always stays. Defaults to <c>true</c>.
+        /// </summary>
+        public bool AutoLinks { get; set; } = true;
+
+        /// <summary>
+        /// Whether each item of a list query gets automatic links: to the resources it refers to, and to the queries
+        /// nested under its route. Its <c>self</c> link always stays. Defaults to <c>true</c>.
+        /// </summary>
+        public bool AutoItemLinks { get; set; } = true;
     }
 }

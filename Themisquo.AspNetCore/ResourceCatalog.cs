@@ -10,7 +10,8 @@ namespace Themisquo.AspNetCore
     /// <summary>
     /// The resources served by the GET query endpoints mapped with
     /// <see cref="ThemisquoEndpointExtensions.MapQuery{TQuery, TResult}"/>, for hypermedia formats: what to call a
-    /// result type, the path that returns a given item, the resources it refers to, and the commands that act on it.
+    /// result type, the path that returns a given item, the resources it refers to or nests, and the commands that act on
+    /// it.
     /// </summary>
     /// <remarks>
     /// The endpoints are read on first use, so the catalog can be resolved before they are mapped, but endpoints mapped
@@ -21,17 +22,25 @@ namespace Themisquo.AspNetCore
         private static readonly Regex PlaceholderPattern = new(@"\{[^}]*\}", RegexOptions.Compiled);
 
         private readonly Lazy<ILookup<Type, QueryEndpointMetadata>> endpointsByResultType;
+        private readonly Lazy<ILookup<Type, QueryEndpointMetadata>> endpointsByQueryType;
+        private readonly Lazy<ILookup<string, (string Segment, QueryEndpointMetadata Metadata)>> endpointsByParentShape;
         private readonly Lazy<ILookup<string, CommandEndpointMetadata>> commandsByRouteShape;
         private readonly Lazy<ILookup<Type, CommandEndpointMetadata>> commandsByType;
         private readonly Lazy<ILookup<string, CommandEndpointMetadata>> commandsByContext;
 
         public ResourceCatalog(EndpointDataSource endpointDataSource)
         {
-            endpointsByResultType = new(() => endpointDataSource.Endpoints
+            var queries = new Lazy<IReadOnlyList<QueryEndpointMetadata>>(() => endpointDataSource.Endpoints
                 .Select(endpoint => endpoint.Metadata.GetMetadata<QueryEndpointMetadata>())
                 .OfType<QueryEndpointMetadata>()
                 .Where(metadata => HttpMethods.IsGet(metadata.HttpMethod))
-                .ToLookup(metadata => metadata.ResultType));
+                .ToList());
+            endpointsByResultType = new(() => queries.Value.ToLookup(metadata => metadata.ResultType));
+            endpointsByQueryType = new(() => queries.Value.ToLookup(metadata => metadata.QueryType));
+            endpointsByParentShape = new(() => queries.Value
+                .Select(metadata => (Nesting: ParentAndSegment(metadata.Pattern), Metadata: metadata))
+                .Where(entry => entry.Nesting is not null)
+                .ToLookup(entry => RouteShape(entry.Nesting!.Value.Parent), entry => (entry.Nesting!.Value.Segment, entry.Metadata)));
             var commands = new Lazy<IReadOnlyList<CommandEndpointMetadata>>(() => endpointDataSource.Endpoints
                 .Select(endpoint => endpoint.Metadata.GetMetadata<CommandEndpointMetadata>())
                 .OfType<CommandEndpointMetadata>()
@@ -212,15 +221,12 @@ namespace Themisquo.AspNetCore
 
             foreach (var declaration in declared.Where(declaration => declaration.CommandType is null))
             {
-                var template = declaration.UrlTemplate!;
-                var isAbsolute = template.StartsWith(Uri.UriSchemeHttp + "://", StringComparison.OrdinalIgnoreCase)
-                    || template.StartsWith(Uri.UriSchemeHttps + "://", StringComparison.OrdinalIgnoreCase);
-                if (ResolveTemplate(isAbsolute ? template : "/" + template.TrimStart('/'), target, idProperty, request) is { } url)
+                if (ResolveUrl(declaration.UrlTemplate!, target, idProperty, request) is { } url)
                 {
                     actions.Add(new ResourceAction(
                         declaration.Name!,
                         declaration.Method!.ToUpperInvariant(),
-                        isAbsolute ? url : $"{request.PathBase}{url}",
+                        url,
                         null,
                         (declaration.Fields ?? []).Select(field => new ResourceActionField(field, typeof(string))).ToList(),
                         declaration.Title));
@@ -242,19 +248,140 @@ namespace Themisquo.AspNetCore
                 action?.Title);
         }
 
+        /// <summary>
+        /// The query endpoints nested directly under a resource's route: those whose route is the resource's route plus
+        /// one literal segment, such as <c>/projects/{projectId}/cards</c> under <c>/projects/{id}</c>. Routes match by
+        /// shape, so placeholder names and constraints are ignored. A route with another placeholder, such as
+        /// <c>/projects/{projectId}/cards/{cardId}</c>, is an item rather than a nested resource, so it isn't included.
+        /// </summary>
+        /// <remarks>
+        /// Each link's relation is the nested query's <see cref="ResourceAttribute.Rel"/>, else the segment; its path is
+        /// <paramref name="path"/> plus the segment.
+        /// </remarks>
+        /// <param name="routePattern">The resource's route pattern, such as the one from <see cref="GetItemRoute"/>.</param>
+        /// <param name="path">The resource's resolved path, including the request's path base.</param>
+        public IReadOnlyList<LinkedResource> GetNestedResources(string routePattern, string path) =>
+            endpointsByParentShape.Value[RouteShape(routePattern)]
+                .DistinctBy(entry => entry.Segment, StringComparer.OrdinalIgnoreCase)
+                .Select(entry => LinkTo(entry.Metadata, ResourceConventions.GetResource(entry.Metadata.QueryType)?.Rel ?? entry.Segment,
+                    $"{path.TrimEnd('/')}/{entry.Segment}"))
+                .ToList();
+
+        /// <summary>
+        /// The links from a resource returned by <paramref name="queryType"/>, or from an item of its list, besides its
+        /// <c>self</c> link, in order:
+        /// <list type="number">
+        /// <item>the resources it refers to (see <see cref="GetRelatedResources"/>) and the queries nested under its route
+        /// (see <see cref="GetNestedResources"/>), unless <see cref="ResourceAttribute.AutoLinks"/> or
+        /// <see cref="ResourceAttribute.AutoItemLinks"/> is <c>false</c>;</item>
+        /// <item>the links declared with <see cref="ResourceLinkAttribute"/> or <see cref="ItemLinkAttribute"/>, and their
+        /// generic forms.</item>
+        /// </list>
+        /// A link with the same relation and path appears once.
+        /// </summary>
+        /// <remarks>
+        /// A declared query's route, or an external link's URL template, is filled like a declared action's. A link that
+        /// can't be fully resolved is left out.
+        /// </remarks>
+        /// <param name="queryType">The query that returns the resource, or the list query for its items.</param>
+        /// <param name="forItems">Whether the links are for an item of the list rather than the resource itself.</param>
+        /// <param name="route">The resource's route, for the queries nested under it; <c>null</c> when it has none.</param>
+        /// <param name="target">
+        /// The resource or item that placeholders are filled from, and whose referenced resources are linked; <c>null</c>
+        /// for none, such as for a list.
+        /// </param>
+        /// <param name="request">The current request, for its path base and route values.</param>
+        public IReadOnlyList<LinkedResource> GetLinks(Type queryType, bool forItems, ResourceRoute? route, object? target, HttpRequest request)
+        {
+            var resource = ResourceConventions.GetResource(queryType);
+            var automatic = forItems ? resource?.AutoItemLinks ?? true : resource?.AutoLinks ?? true;
+            var idProperty = target is null ? null : TargetIdProperty(queryType, forItems, target, resource);
+
+            var links = new List<LinkedResource>();
+            if (automatic && target is not null)
+            {
+                links.AddRange(GetRelatedResources(TargetType(queryType, forItems, target), target, request)
+                    .Select(related => new LinkedResource(related.TypeName, related.Path, related.TypeName)));
+            }
+
+            if (automatic && route is not null)
+            {
+                links.AddRange(GetNestedResources(route.Pattern, route.Path));
+            }
+
+            foreach (var declaration in ResourceConventions.GetDeclaredLinks(queryType, forItems))
+            {
+                var link = declaration.QueryType is { } linkedQueryType
+                    ? endpointsByQueryType.Value[linkedQueryType]
+                        .Select(metadata => ResolveTemplate("/" + metadata.Pattern.TrimStart('/'), target, idProperty, request) is { } path
+                            ? LinkTo(metadata, declaration.Rel ?? ResourceConventions.GetResource(linkedQueryType)?.Rel, $"{request.PathBase}{path}")
+                            : null)
+                        .FirstOrDefault(link => link is not null)
+                    : ResolveUrl(declaration.UrlTemplate!, target, idProperty, request) is { } url
+                        ? new LinkedResource(declaration.Rel!, url)
+                        : null;
+                if (link is not null && !links.Any(existing => existing.Rel == link.Rel && existing.Path == link.Path))
+                {
+                    links.Add(link);
+                }
+            }
+
+            return links;
+        }
+
+        // A link to a query endpoint, typed by its result. Without a relation, the resource type name is used.
+        private LinkedResource LinkTo(QueryEndpointMetadata metadata, string? rel, string path)
+        {
+            if (ResourceConventions.GetCollectionElementType(metadata.ResultType) is Type elementType)
+            {
+                var elementTypeName = GetTypeName(elementType, metadata.QueryType);
+                return new LinkedResource(rel ?? elementTypeName, path, elementTypeName, IsCollection: true);
+            }
+
+            var typeName = GetTypeName(metadata.ResultType, metadata.QueryType);
+            return IsSingleResource(metadata.ResultType)
+                ? new LinkedResource(rel ?? typeName, path, typeName)
+                : new LinkedResource(rel ?? typeName, path);
+        }
+
+        // The pattern's parent route and last segment, when that segment is a literal: /projects/{id}/cards gives
+        // (/projects/{id}, cards), and /projects gives ("", projects).
+        private static (string Parent, string Segment)? ParentAndSegment(string pattern)
+        {
+            var route = "/" + pattern.Trim('/');
+            var lastSlash = route.LastIndexOf('/');
+            var segment = route[(lastSlash + 1)..];
+            return segment.Length > 0 && !segment.Contains('{') ? (route[..lastSlash], segment) : null;
+        }
+
+        // The declared type of the target: the query's result type, or its element type for an item.
+        private static Type TargetType(Type queryType, bool forItems, object target)
+        {
+            var resultType = ResourceConventions.GetQueryResultType(queryType);
+            return (forItems && resultType is not null ? ResourceConventions.GetCollectionElementType(resultType) : resultType)
+                ?? target.GetType();
+        }
+
         // The target's primary id: named by the query's [Resource(Id)] for a single result, else by the one on a
         // single-item query for the target's type, else its Id property.
         private PropertyInfo? TargetIdProperty(Type queryType, bool forItems, object target, ResourceAttribute? resource)
         {
-            var resultType = ResourceConventions.GetQueryResultType(queryType);
-            var targetType = (forItems && resultType is not null ? ResourceConventions.GetCollectionElementType(resultType) : resultType)
-                ?? target.GetType();
             var idResource = !forItems && resource?.Id is not null
                 ? resource
-                : endpointsByResultType.Value[targetType]
+                : endpointsByResultType.Value[TargetType(queryType, forItems, target)]
                     .Select(metadata => ResourceConventions.GetResource(metadata.QueryType))
                     .FirstOrDefault(r => r?.Id is not null);
             return ResourceConventions.GetIdProperty(target.GetType(), idResource);
+        }
+
+        // An external URL template, filled like a route: a relative URL gets the request's path base in front, and an
+        // absolute http(s) URL is used as is.
+        private static string? ResolveUrl(string template, object? target, PropertyInfo? idProperty, HttpRequest request)
+        {
+            var isAbsolute = template.StartsWith(Uri.UriSchemeHttp + "://", StringComparison.OrdinalIgnoreCase)
+                || template.StartsWith(Uri.UriSchemeHttps + "://", StringComparison.OrdinalIgnoreCase);
+            var url = ResolveTemplate(isAbsolute ? template : "/" + template.TrimStart('/'), target, idProperty, request);
+            return url is null || isAbsolute ? url : $"{request.PathBase}{url}";
         }
 
         private static string? ResolveTemplate(string template, object? target, PropertyInfo? idProperty, HttpRequest request)

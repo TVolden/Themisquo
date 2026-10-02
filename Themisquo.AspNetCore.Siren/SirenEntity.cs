@@ -20,10 +20,11 @@ namespace Themisquo.AspNetCore.Siren
         [property: JsonPropertyName("links"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SirenLink[]? Links,
         [property: JsonPropertyName("actions"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SirenAction[]? Actions = null);
 
-    /// <summary>A Siren link to another resource.</summary>
+    /// <summary>A Siren link to another resource; <see cref="Class"/> is the linked resource's class, when known.</summary>
     public record SirenLink(
         [property: JsonPropertyName("rel")] string[] Rel,
-        [property: JsonPropertyName("href")] string Href);
+        [property: JsonPropertyName("href")] string Href,
+        [property: JsonPropertyName("class"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? Class = null);
 
     /// <summary>A Siren action: a command that can be sent to the entity.</summary>
     public record SirenAction(

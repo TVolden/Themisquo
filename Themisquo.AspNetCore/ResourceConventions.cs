@@ -26,6 +26,15 @@ namespace Themisquo.AspNetCore
                 ? queryType.GetCustomAttributes<ItemActionAttribute>().ToList<DeclaredActionAttribute>()
                 : queryType.GetCustomAttributes<ResourceActionAttribute>().ToList<DeclaredActionAttribute>();
 
+        /// <summary>
+        /// The links declared on the query type: its <see cref="ItemLinkAttribute"/>s when <paramref name="forItems"/> is
+        /// <c>true</c>, else its <see cref="ResourceLinkAttribute"/>s.
+        /// </summary>
+        public static IReadOnlyList<DeclaredLinkAttribute> GetDeclaredLinks(Type queryType, bool forItems) =>
+            forItems
+                ? queryType.GetCustomAttributes<ItemLinkAttribute>().ToList<DeclaredLinkAttribute>()
+                : queryType.GetCustomAttributes<ResourceLinkAttribute>().ToList<DeclaredLinkAttribute>();
+
         /// <summary>The <c>TResult</c> of the query type's <see cref="IQuery{TResult}"/>, or <c>null</c> if it isn't a query.</summary>
         public static Type? GetQueryResultType(Type queryType) =>
             queryType.GetInterfaces()
